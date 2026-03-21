@@ -5,4 +5,4 @@ nixPkgs = ["python312", "python312Packages.pip"]
 cmds = ["pip install flask requests"]
 
 [start]
-cmd = "gunicorn klik_lovable_bot:app"t.py"
+cmd = "gunicorn klik_lovable_bot:app"
