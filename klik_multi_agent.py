@@ -3,8 +3,7 @@
 Klik Multi-Bot Agent v3 â€” 5 Bots + Inline Keyboards + Callback Handling
 """
 from flask import Flask, request, jsonify
-import requests, json, logging
-
+import requests, json, logging, os
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
