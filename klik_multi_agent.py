@@ -17,7 +17,13 @@ BOTS = {
     "health":      {"token": "8706328171:AAHGB5bLM1oe4ZdqkPR4AEk4ld_kp6jhMe8", "name": "×“×™×•×•×— ×¢×œ ×ª×§×œ×”"},
 }
 LOVABLE_URL = "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325"
-BASE_URL    = "https://klik-agent.onrender.com"
+
+
+def clean_phone(phone):
+    digits = phone.replace("-","").replace(" ","").replace("+","")
+    if digits.startswith("972"):
+        return digits
+    return "972" + digits.lstrip("0")
 
 
 def tg(token, chat_id, text, keyboard=None):
@@ -34,13 +40,11 @@ def answer_callback(token, callback_id, text="âœ…"):
                   json={"callback_query_id": callback_id, "text": text}, timeout=5)
 
 
-# â”€â”€ Formatters â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 def fmt_lead(d):
-    lid = d.get("id", "")
-    phone = d.get("phone", "").replace("-","").replace(" ","").lstrip("0")
+    lid   = d.get("id", "")
+    phone = clean_phone(d.get("phone", "0500000000"))
     text = (
-        f"ðŸ”¥ <b>×œ×§×•×— ×—×“×©!</b>\n"
+        "ðŸ”¥ <b>×œ×§×•×— ×—×“×©!</b>\n"
         f"ðŸ‘¤ ×©×: {d.get('name','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ”§ ×©×™×¨×•×ª: {d.get('service','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ“ ×ž×™×§×•×: {d.get('location','×œ× ×¦×•×™×Ÿ')}\n"
@@ -49,12 +53,12 @@ def fmt_lead(d):
     )
     kb = [
         [
-            {"text": "ðŸ“ž ×”×ª×§×©×¨ ×¢×›×©×™×•", "url": f"tel:{d.get('phone','')}"},
-            {"text": "ðŸ’¬ WhatsApp",      "url": f"https://wa.me/972{phone}"},
+            {"text": "ðŸ“ž ×”×ª×§×©×¨ ×¢×›×©×™×•", "url": f"https://wa.me/{phone}?text=×©×œ×•×"},
+            {"text": "ðŸ’¬ WhatsApp",     "url": f"https://wa.me/{phone}"},
         ],
         [
-            {"text": "âŒ ×¡×’×•×¨ ×œ×™×“",     "callback_data": f"close_lead:{lid}"},
-            {"text": "â° ×ª×–×›×•×¨×ª 2×©",    "callback_data": f"snooze_lead:{lid}"},
+            {"text": "âŒ ×¡×’×•×¨ ×œ×™×“",   "callback_data": f"close_lead:{lid}"},
+            {"text": "â° ×ª×–×›×•×¨×ª 2×©", "callback_data": f"snooze_lead:{lid}"},
         ],
     ]
     return text, kb
@@ -62,9 +66,9 @@ def fmt_lead(d):
 
 def fmt_bug(d):
     bid = d.get("id", "")
-    sev = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(d.get("severity",""),"ðŸ”´")
+    sev = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(d.get("severity",""), "ðŸ”´")
     text = (
-        f"ðŸ”´ <b>×ª×§×œ×” ×—×“×©×”!</b>\n"
+        "ðŸ”´ <b>×ª×§×œ×” ×—×“×©×”!</b>\n"
         f"ðŸ“Œ × ×•×©×: {d.get('title','×œ× ×¦×•×™×Ÿ')}\n"
         f"{sev} ×—×•×ž×¨×”: {d.get('severity','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ‘¤ ×ž×“×•×•×—: {d.get('reported_by','×œ× ×¦×•×™×Ÿ')}\n"
@@ -77,7 +81,7 @@ def fmt_bug(d):
             {"text": "âœ… ×”×•×©×œ×",          "callback_data": f"complete_bug:{bid}"},
         ],
         [
-            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": f"{LOVABLE_URL}?message=×ª×§×Ÿ+×ª×§×œ×”:+{d.get('title','')}"},
+            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL},
             {"text": "ðŸš€ ×”×¨×¥ ×¢×›×©×™×•",     "callback_data": f"run_fix:{bid}"},
         ],
         [
@@ -90,13 +94,14 @@ def fmt_bug(d):
 
 def fmt_lovable(d):
     rid = d.get("id", "")
-    pri = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(d.get("priority",""),"ðŸ”µ")
+    pri = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(d.get("priority",""), "ðŸ”µ")
+    details = d.get("details","")
     text = (
-        f"ðŸ”µ <b>×‘×§×©×” ×—×“×©×” ×‘-Lovable!</b>\n"
-        f"ðŸª¡ ×¤×™×¦\'×¨: {d.get('feature','×œ× ×¦×•×™×Ÿ')}\n"
+        "ðŸ”µ <b>×‘×§×©×” ×—×“×©×” ×‘-Lovable!</b>\n"
+        f"ðŸª¡ ×¤×™×¦'×¨: {d.get('feature','×œ× ×¦×•×™×Ÿ')}\n"
         f"{pri} ×¢×“×™×¤×•×ª: {d.get('priority','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ‘¤ ×ž×‘×§×©: {d.get('requested_by','×œ× ×¦×•×™×Ÿ')}\n"
-        f"ðŸ“ ×¤×¨×˜×™×: {d.get('details','×œ× ×¦×•×™×Ÿ')}"
+        f"ðŸ“ ×¤×¨×˜×™×: {details}"
     )
     kb = [
         [
@@ -104,7 +109,7 @@ def fmt_lovable(d):
             {"text": "âŒ ×“×—×”",            "callback_data": f"reject_request:{rid}"},
         ],
         [
-            {"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "url": f"{LOVABLE_URL}?message={d.get('details','')}"},
+            {"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "url": LOVABLE_URL},
             {"text": "âœ¨ ×©×¤×¨ ×¢×•×“",        "callback_data": f"improve_request:{rid}"},
         ],
     ]
@@ -114,7 +119,7 @@ def fmt_lovable(d):
 def fmt_matchmaking(d):
     mid = d.get("id", "")
     text = (
-        f"ðŸŸ£ <b>×”×¦×¢×ª ×©×™×“×•×š ×—×“×©×”!</b>\n"
+        "ðŸŸ£ <b>×”×¦×¢×ª ×©×™×“×•×š ×—×“×©×”!</b>\n"
         f"ðŸ‘¤ ×©×: {d.get('name','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸŽ‚ ×’×™×œ: {d.get('age','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ“ ×ž×™×§×•×: {d.get('location','×œ× ×¦×•×™×Ÿ')}\n"
@@ -127,7 +132,7 @@ def fmt_matchmaking(d):
             {"text": "ðŸ” ×¡×˜×˜×•×¡",         "callback_data": f"status_match:{mid}"},
         ],
         [
-            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": f"{LOVABLE_URL}"},
+            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL},
             {"text": "âœ¨ ×©×¤×¨ ×¤×¨×•×¤×™×œ",    "url": f"{LOVABLE_URL}?message=×©×¤×¨+×¤×¨×•×¤×™×œ:{d.get('name','')}"},
         ],
     ]
@@ -137,7 +142,7 @@ def fmt_matchmaking(d):
 def fmt_health(d):
     hid = d.get("id", "")
     text = (
-        f"ðŸ©º <b>×“×™×•×•×— ×¢×œ ×ª×§×œ×”!</b>\n"
+        "ðŸ©º <b>×“×™×•×•×— ×¢×œ ×ª×§×œ×”!</b>\n"
         f"ðŸ“Œ ×›×•×ª×¨×ª: {d.get('title','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ‘¤ ×ž×“×•×•×—: {d.get('reported_by','×œ× ×¦×•×™×Ÿ')}\n"
         f"ðŸ“ ×ª×™××•×¨: {d.get('description','×œ× ×¦×•×™×Ÿ')}\n"
@@ -146,7 +151,7 @@ def fmt_health(d):
     kb = [
         [
             {"text": "âœ… ××™×©×¨×ª×™",         "callback_data": f"approve_health:{hid}"},
-            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": f"{LOVABLE_URL}?message=×ª×§×Ÿ:+{d.get('title','')}"},
+            {"text": "ðŸ”“ ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL},
         ],
         [
             {"text": "âœ… ×”×•×©×œ×",          "callback_data": f"complete_health:{hid}"},
@@ -156,24 +161,22 @@ def fmt_health(d):
     return text, kb
 
 
-# â”€â”€ Callback Handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 CALLBACK_RESPONSES = {
     "close_lead":       ("âœ… ×”×œ×™×“ × ×¡×’×¨ ×‘×”×¦×œ×—×”", "âŒ ×œ×™×“ × ×¡×’×¨"),
-    "snooze_lead":      ("â° ×ª×–×›×•×¨×ª × ×§×‘×¢×” ×œ×¢×•×“ 2 ×©×¢×•×ª", "â° ×ª×–×›×•×¨×ª × ×§×‘×¢×”"),
-    "approve_bug":      ("âœ… ×”×ª×§×œ×” ××•×©×¨×” â€” ×ž×˜×¤×œ×™× ×‘×” ×¢×›×©×™×•", "âœ… ×‘×˜×™×¤×•×œ"),
+    "snooze_lead":      ("â° ×ª×–×›×•×¨×ª × ×§×‘×¢×” ×œ×¢×•×“ 2 ×©×¢×•×ª", "â° ×ª×–×›×•×¨×ª"),
+    "approve_bug":      ("âœ… ×”×ª×§×œ×” ××•×©×¨×” â€” ×ž×˜×¤×œ×™× ×¢×›×©×™×•", "âœ… ×‘×˜×™×¤×•×œ"),
     "complete_bug":     ("âœ… ×”×ª×§×œ×” ×¡×•×ž× ×” ×›×”×•×©×œ×ž×”!", "âœ… ×”×•×©×œ×"),
     "run_fix":          ("ðŸš€ ×ª×™×§×•×Ÿ ××•×˜×•×ž×˜×™ ×”×•×¤×¢×œ!", "ðŸš€ ×ž×¨×™×¥"),
-    "status_bug":       ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ” ×‘×•×“×§"),
-    "improve_bug":      ("âœ¨ ×©×•×œ×— ×œ-Lovable ×œ×©×™×¤×•×¨", "âœ¨ ×ž×©×¤×¨"),
-    "approve_request":  ("âœ… ×”×‘×§×©×” ××•×©×¨×” ×•× ×©×œ×—×” ×œ-Lovable!", "âœ… ××•×©×¨"),
+    "status_bug":       ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ”"),
+    "improve_bug":      ("âœ¨ ×©×•×œ×— ×œ-Lovable ×œ×©×™×¤×•×¨", "âœ¨"),
+    "approve_request":  ("âœ… ×”×‘×§×©×” ××•×©×¨×”!", "âœ… ××•×©×¨"),
     "reject_request":   ("âŒ ×”×‘×§×©×” × ×“×—×ª×”", "âŒ × ×“×—×”"),
-    "improve_request":  ("âœ¨ ×©×•×œ×— ×œ-Lovable ×œ×©×™×¤×•×¨", "âœ¨ ×ž×©×¤×¨"),
+    "improve_request":  ("âœ¨ ×©×•×œ×— ×œ-Lovable ×œ×©×™×¤×•×¨", "âœ¨"),
     "complete_match":   ("âœ… ×”×‘×§×©×” ×˜×•×¤×œ×” ×‘×”×¦×œ×—×”! ðŸŽ‰", "âœ… ×”×•×©×œ×"),
-    "status_match":     ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ” ×‘×•×“×§"),
-    "approve_health":   ("âœ… ×“×™×•×•×— ×”×ª×§×‘×œ â€” ×ž×˜×¤×œ×™× ×‘×•", "âœ… ×”×ª×§×‘×œ"),
-    "complete_health":  ("âœ… ×”×ª×§×œ×” ×ª×•×§× ×” ×‘×”×¦×œ×—×”!", "âœ… ×”×•×©×œ×"),
-    "status_health":    ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ” ×‘×•×“×§"),
+    "status_match":     ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ”"),
+    "approve_health":   ("âœ… ×“×™×•×•×— ×”×ª×§×‘×œ â€” ×ž×˜×¤×œ×™×", "âœ…"),
+    "complete_health":  ("âœ… ×”×ª×§×œ×” ×ª×•×§× ×”!", "âœ… ×”×•×©×œ×"),
+    "status_health":    ("ðŸ” ×‘×•×“×§ ×¡×˜×˜×•×¡...", "ðŸ”"),
 }
 
 
@@ -191,30 +194,27 @@ def handle_webhook(bot_key, formatter):
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# â”€â”€ Routes â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
 @app.route("/webhook/leads",       methods=["POST"])
-def leads():       return handle_webhook("leads",       fmt_lead)
+def leads():         return handle_webhook("leads",       fmt_lead)
 
 @app.route("/webhook/bugs",        methods=["POST"])
-def bugs():        return handle_webhook("bugs",        fmt_bug)
+def bugs():          return handle_webhook("bugs",        fmt_bug)
 
 @app.route("/webhook/lovable",     methods=["POST"])
-def lovable():     return handle_webhook("lovable",     fmt_lovable)
+def lovable():       return handle_webhook("lovable",     fmt_lovable)
 
 @app.route("/webhook/matchmaking", methods=["POST"])
-def matchmaking(): return handle_webhook("matchmaking", fmt_matchmaking)
+def matchmaking():   return handle_webhook("matchmaking", fmt_matchmaking)
 
 @app.route("/webhook/health",      methods=["POST"])
-def health_report(): return handle_webhook("health",   fmt_health)
+def health_report(): return handle_webhook("health",      fmt_health)
 
 
 @app.route("/webhook/callback/<bot_key>", methods=["POST"])
 def callback(bot_key):
-    """Handles Telegram inline button presses"""
     try:
-        upd  = request.get_json()
-        cb   = upd.get("callback_query", {})
+        upd     = request.get_json()
+        cb      = upd.get("callback_query", {})
         cb_id   = cb.get("id")
         cb_data = cb.get("data", "")
         token   = BOTS.get(bot_key, {}).get("token")
@@ -223,7 +223,8 @@ def callback(bot_key):
         action  = cb_data.split(":")[0]
         rec_id  = cb_data.split(":")[1] if ":" in cb_data else ""
         long_msg, short_msg = CALLBACK_RESPONSES.get(action, ("âœ… ×‘×•×¦×¢", "âœ…"))
-        tg(token, CHAT_ID, f"{long_msg}\nðŸ†” ×ž×–×”×”: {rec_id}" if rec_id else long_msg)
+        msg = f"{long_msg}\nðŸ†” ×ž×–×”×”: {rec_id}" if rec_id else long_msg
+        tg(token, CHAT_ID, msg)
         answer_callback(token, cb_id, short_msg)
         return jsonify({"ok": True}), 200
     except Exception as e:
@@ -232,8 +233,9 @@ def callback(bot_key):
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    return jsonify({"status": "ok", "bots": list(BOTS.keys()), "version": "3.0"}), 200
+    return jsonify({"status": "ok", "bots": list(BOTS.keys()), "version": "3.1"}), 200
+
 
 if __name__ == "__main__":
-    print("ðŸš€ Klik Multi-Bot Agent v3 â€” 5 Bots + Buttons")
+    print("ðŸš€ Klik Multi-Bot Agent v3.1 â€” 5 Bots + Buttons")
     app.run(host="0.0.0.0", port=5000, debug=False)
