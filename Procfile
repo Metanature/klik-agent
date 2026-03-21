@@ -1,1 +1,1 @@
-web: python klik_multi_agent.py
+web: python klik_lovable_bot.py
