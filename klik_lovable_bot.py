@@ -10,7 +10,7 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
 # ========= ENV =========
-BOT_TOKEN = os.environ.get("8690987639:AAFshCEG_C1Jlr6s2ocwVX70B7SOOtp74w0", "").strip()
+BOT_TOKEN = os.environ.get(8690987639:AAFshCEG_C1Jlr6s2ocwVX70B7SOOtp74w0, "").strip()
 CHAT_ID = int(os.environ.get("CHAT_ID", "326460077"))
 LOVABLE_URL = os.environ.get(
     "LOVABLE_URL",
