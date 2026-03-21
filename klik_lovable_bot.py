@@ -1,381 +1,242 @@
 #!/usr/bin/env python3
 """
-klik_lovable_bot.py v2.0
-Bot: @klik_lovable_bot
-Buttons: improve_prompt | send_to_lovable | status
+Klik Multi-Bot Agent v3.1 \u2014 5 Bots + Inline Keyboards + Callback Handling
 """
 from flask import Flask, request, jsonify
-import requests, logging, os, time
+import requests, json, logging, os          # \u2190 \u05ea\u05d9\u05e7\u05d5\u05df 1: \u05e0\u05d5\u05e1\u05e3 os
 
 app = Flask(__name__)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-BOT_TOKEN   = "8690987639:AAH83slPs_j_H7pGSfpeGWTWirCsiJHi7Ks"
-CHAT_ID     = 326460077
+CHAT_ID = 326460077
+BOTS = {
+    "leads":       {"token": "8643090938:AAGo55jGaZFlzKJm63_QPcpQPp2Ow5p5vFw", "name": "\u05dc\u05d9\u05d3\u05d9\u05dd \u05e0\u05db\u05e0\u05e1\u05d9\u05dd"},
+    "bugs":        {"token": "8785442399:AAFTsUKKe55l31yjfeAs_-g2TRxYqtvWdp8", "name": "\u05ea\u05e7\u05dc\u05d5\u05ea \u05d8\u05db\u05e0\u05d9\u05d5\u05ea"},
+    "lovable":     {"token": "8690987639:AAH83slPs_j_H7pGSfpeGWTWirCsiJHi7Ks", "name": "\u05d1\u05e7\u05e9\u05d5\u05ea Lovable"},
+    "matchmaking": {"token": "8622414362:AAFYG8Qk_5oQYTmOdxx6CccMaDhh2fpTZmk", "name": "\u05d4\u05e6\u05e2\u05d5\u05ea \u05dc\u05e9\u05d9\u05d3\u05d5\u05db\u05d9\u05dd"},
+    "health":      {"token": "8706328171:AAHGB5bLM1oe4ZdqkPR4AEk4ld_kp6jhMe8", "name": "\u05d3\u05d9\u05d5\u05d5\u05d7 \u05e2\u05dc \u05ea\u05e7\u05dc\u05d4"},
+}
 LOVABLE_URL = "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325"
-BASE_URL    = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# â”€â”€â”€ In-memory store â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-# rid â†’ {
-#   "data":           original payload,
-#   "improved_prompt": str or None,
-#   "status":         "created" | "improved" | "sent",
-#   "created_at":     float,
-#   "updated_at":     float,
-# }
-request_store: dict = {}
 
 
-# â”€â”€â”€ Telegram helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+def clean_phone(phone):
+    digits = phone.replace("-","").replace(" ","").replace("+","")
+    if digits.startswith("972"):
+        return digits
+    return "972" + digits.lstrip("0")
 
-def tg_send(chat_id, text, keyboard=None):
+
+def tg(token, chat_id, text, keyboard=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if keyboard:
         payload["reply_markup"] = {"inline_keyboard": keyboard}
-    r = requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=10)
-    result = r.json()
-    logging.info(f"[tg_send] ok={result.get('ok')} chat={chat_id}")
-    return result
+    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
+                      json=payload, timeout=10)
+    return r.json().get("ok", False)
 
 
-def tg_edit(chat_id, message_id, text, keyboard=None):
-    payload = {
-        "chat_id":    chat_id,
-        "message_id": message_id,
-        "text":       text,
-        "parse_mode": "HTML",
-    }
-    if keyboard:
-        payload["reply_markup"] = {"inline_keyboard": keyboard}
-    r = requests.post(f"{BASE_URL}/editMessageText", json=payload, timeout=10)
-    result = r.json()
-    logging.info(f"[tg_edit] ok={result.get('ok')} msg={message_id}")
-    return result
+def answer_callback(token, callback_id, text="\u2705"):
+    requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
+                  json={"callback_query_id": callback_id, "text": text}, timeout=5)
 
 
-def tg_answer(callback_id, text="âœ…", show_alert=False):
-    requests.post(
-        f"{BASE_URL}/answerCallbackQuery",
-        json={"callback_query_id": callback_id, "text": text, "show_alert": show_alert},
-        timeout=5,
+def fmt_lead(d):
+    lid   = d.get("id", "")
+    phone = clean_phone(d.get("phone", "0500000000"))
+    text = (
+        "\u1f525 <b>\u05dc\u05e7\u05d5\u05d7 \u05d7\u05d3\u05e9!</b>\n"
+        f"\u1f464 \u05e9\u05dd: {d.get('name','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f527 \u05e9\u05d9\u05e8\u05d5\u05ea: {d.get('service','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4cd \u05de\u05d9\u05e7\u05d5\u05dd: {d.get('location','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4de \u05d8\u05dc\u05e4\u05d5\u05df: {d.get('phone','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
     )
-
-
-def main_keyboard(rid):
-    """Standard keyboard attached to every request message."""
-    return [
+    kb = [
         [
-            {"text": "âœ… ××©×¨",  "callback_data": f"approve:{rid}"},
-            {"text": "âŒ ×“×—×”",  "callback_data": f"reject:{rid}"},
+            {"text": "\u1f4de \u05d4\u05ea\u05e7\u05e9\u05e8 \u05e2\u05db\u05e9\u05d9\u05d5", "url": f"https://wa.me/{phone}?text=\u05e9\u05dc\u05d5\u05dd"},
+            {"text": "\u1f4ac WhatsApp",     "url": f"https://wa.me/{phone}"},
         ],
         [
-            {"text": "âœ¨ ×©×¤×¨ ×¤×¨×•×ž×¤×˜", "callback_data": f"improve_prompt:{rid}"},
-            {"text": "ðŸ“Š ×¡×˜×˜×•×¡",      "callback_data": f"status:{rid}"},
-        ],
-        [
-            {"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "callback_data": f"send_to_lovable:{rid}"},
-            {"text": "ðŸ”— ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL},
+            {"text": "\u274c \u05e1\u05d2\u05d5\u05e8 \u05dc\u05d9\u05d3",   "callback_data": f"close_lead:{lid}"},
+            {"text": "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea 2\u05e9", "callback_data": f"snooze_lead:{lid}"},
         ],
     ]
+    return text, kb
 
 
-# â”€â”€â”€ Prompt builders â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-def build_improved_prompt(data: dict) -> str:
-    feature      = data.get("feature",      "×œ× ×¦×•×™×Ÿ")
-    priority     = data.get("priority",     "×œ× ×¦×•×™×Ÿ")
-    requested_by = data.get("requested_by", "×œ× ×¦×•×™×Ÿ")
-    details      = data.get("details",      "×œ× ×¦×•×™×Ÿ")
-    pe = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(priority, "ðŸŸ£")
-
-    return (
-        f"âœ¨ <b>×¤×¨×•×ž×¤×˜ ×ž×©×•×¤×¨ ×œ-Lovable</b>\n\n"
-        f"<b>1ï¸âƒ£ ×ž×˜×¨×”:</b>\n"
-        f"×œ×ž×ž×© ××ª ×”×¤×™×¦'×¨: <b>{feature}</b>\n\n"
-        f"<b>2ï¸âƒ£ ×ž×” ×”×‘×¢×™×”:</b>\n"
-        f"{details}\n\n"
-        f"<b>3ï¸âƒ£ ×ž×” ×¦×¨×™×š ×œ×©× ×•×ª:</b>\n"
-        f"â€¢ ×¢×“×›×•×Ÿ ×ž×ž×©×§ ×ž×©×ª×ž×© ×× × ×“×¨×©\n"
-        f"â€¢ ×¢×“×›×•×Ÿ ×œ×•×’×™×§×” ×¢×¡×§×™×ª ×‘×œ×‘×“ ×œ×¤×™×¦'×¨ ×–×”\n"
-        f"â€¢ ×¢×“×›×•×Ÿ state management ×× ×¨×œ×•×•× ×˜×™\n\n"
-        f"<b>4ï¸âƒ£ ×“×¨×™×©×•×ª ×ž×“×•×™×§×•×ª:</b>\n"
-        f"â€¢ ×¤×™×¦'×¨: {feature}\n"
-        f"â€¢ ×¢×“×™×¤×•×ª: {pe} {priority}\n"
-        f"â€¢ ×ž×‘×•×§×© ×¢\"×™: {requested_by}\n"
-        f"â€¢ ×¤×¨×˜×™×: {details}\n\n"
-        f"<b>5ï¸âƒ£ ×ž×’×‘×œ×•×ª:</b>\n"
-        f"â€¢ ××œ ×ª×©× ×” ×§×•×“ ×©××™× ×• ×§×©×•×¨ ×œ×¤×™×¦'×¨ ×–×”\n"
-        f"â€¢ ××œ ×ª×©×‘×•×¨ ×¤×™×¦'×¨×™× ×§×™×™×ž×™×\n"
-        f"â€¢ ××œ ×ª×•×¡×™×£ ×—×‘×™×œ×•×ª ×œ×œ× ××™×©×•×¨\n\n"
-        f"<b>6ï¸âƒ£ ×ª×•×¦××” ×¨×¦×•×™×”:</b>\n"
-        f"×”×¤×™×¦'×¨ \"{feature}\" ×¢×•×‘×“ ×‘×ž×œ×•××• ×•×œ× ×©×•×‘×¨ ×“×‘×¨ ×§×™×™×."
+def fmt_bug(d):
+    bid = d.get("id", "")
+    sev = {"\u05d2\u05d1\u05d5\u05d4\u05d4": "\u1f534", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea": "\u1f7e1", "\u05e0\u05de\u05d5\u05db\u05d4": "\u1f7e2"}.get(d.get("severity",""), "\u1f534")
+    text = (
+        "\u1f534 <b>\u05ea\u05e7\u05dc\u05d4 \u05d7\u05d3\u05e9\u05d4!</b>\n"
+        f"\u1f4cc \u05e0\u05d5\u05e9\u05d0: {d.get('title','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"{sev} \u05d7\u05d5\u05de\u05e8\u05d4: {d.get('severity','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f464 \u05de\u05d3\u05d5\u05d5\u05d7: {d.get('reported_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f517 \u05e7\u05d9\u05e9\u05d5\u05e8: {d.get('url','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
     )
+    kb = [
+        [
+            {"text": "\u2705 \u05d0\u05e9\u05e8 \u05d5\u05ea\u05e7\u05df",      "callback_data": f"approve_bug:{bid}"},
+            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_bug:{bid}"},
+        ],
+        [
+            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
+            {"text": "\u1f680 \u05d4\u05e8\u05e5 \u05e2\u05db\u05e9\u05d9\u05d5",     "callback_data": f"run_fix:{bid}"},
+        ],
+        [
+            {"text": "\u1f50d \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_bug:{bid}"},
+            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e2\u05d5\u05d3",        "callback_data": f"improve_bug:{bid}"},
+        ],
+    ]
+    return text, kb
 
 
-def build_send_message(rid: str, store: dict) -> str:
-    data     = store.get("data", {})
-    prompt   = store.get("improved_prompt") or build_improved_prompt(data)
-    feature  = data.get("feature", "×œ× ×¦×•×™×Ÿ")
-    ts       = time.strftime("%H:%M:%S", time.localtime(store.get("updated_at", time.time())))
-
-    return (
-        f"ðŸš€ <b>×©×œ×™×—×” ×œ-Lovable</b>\n"
-        f"ðŸ“‹ request_id: <code>{rid}</code>\n"
-        f"ðŸª„ ×¤×™×¦'×¨: {feature}\n"
-        f"ðŸ• ×¢×•×“×›×Ÿ: {ts}\n\n"
-        f"ðŸ“ <b>×¤×¨×•×ž×¤×˜ ×œ×”×“×‘×§×”:</b>\n"
-        f"<pre>{prompt}</pre>\n\n"
-        f"ðŸ‘† ×”×¢×ª×§ ××ª ×”×¤×¨×•×ž×¤×˜ ×•×”×“×‘×§ ×™×©×™×¨×•×ª ×‘-Lovable"
+def fmt_lovable(d):
+    rid = d.get("id", "")
+    pri = {"\u05d2\u05d1\u05d5\u05d4\u05d4": "\u1f534", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea": "\u1f7e1", "\u05e0\u05de\u05d5\u05db\u05d4": "\u1f7e2"}.get(d.get("priority",""), "\u1f535")
+    details = d.get("details","")
+    text = (
+        "\u1f535 <b>\u05d1\u05e7\u05e9\u05d4 \u05d7\u05d3\u05e9\u05d4 \u05d1-Lovable!</b>\n"
+        f"\u1fa84 \u05e4\u05d9\u05e6'\u05e8: {d.get('feature','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"{pri} \u05e2\u05d3\u05d9\u05e4\u05d5\u05ea: {d.get('priority','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f464 \u05de\u05d1\u05e7\u05e9: {d.get('requested_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4dd \u05e4\u05e8\u05d8\u05d9\u05dd: {details}"
     )
+    kb = [
+        [
+            {"text": "\u2705 \u05d0\u05e9\u05e8",            "callback_data": f"approve_request:{rid}"},
+            {"text": "\u274c \u05d3\u05d7\u05d4",            "callback_data": f"reject_request:{rid}"},
+        ],
+        [
+            {"text": "\u1f680 \u05e9\u05dc\u05d7 \u05dc-Lovable", "url": LOVABLE_URL},
+            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e2\u05d5\u05d3",        "callback_data": f"improve_request:{rid}"},
+        ],
+    ]
+    return text, kb
 
 
-def build_status_message(rid: str, store: dict) -> str:
-    data     = store.get("data", {})
-    status   = store.get("status", "unknown")
-    feature  = data.get("feature",  "×œ× ×¦×•×™×Ÿ")
-    priority = data.get("priority", "×œ× ×¦×•×™×Ÿ")
-    created  = time.strftime("%H:%M:%S", time.localtime(store.get("created_at", 0)))
-    updated  = time.strftime("%H:%M:%S", time.localtime(store.get("updated_at", 0)))
-
-    status_map = {
-        "created":  "ðŸŸ¡ × ×•×¦×¨ â€” ×ž×ž×ª×™×Ÿ ×œ×˜×™×¤×•×œ",
-        "improved": "ðŸ”µ ×¤×¨×•×ž×¤×˜ ×©×•×¤×¨ â€” ×ž×•×›×Ÿ ×œ×©×œ×™×—×”",
-        "sent":     "ðŸŸ¢ × ×©×œ×— ×œ-Lovable",
-        "approved": "âœ… ××•×©×¨",
-        "rejected": "âŒ × ×“×—×”",
-    }
-    status_text = status_map.get(status, f"âšª {status}")
-    has_prompt  = "âœ… ×›×Ÿ" if store.get("improved_prompt") else "âŒ ×˜×¨× ×©×•×¤×¨"
-
-    return (
-        f"ðŸ“Š <b>×¡×˜×˜×•×¡ ×‘×§×©×”</b>\n\n"
-        f"ðŸ”‘ request_id: <code>{rid}</code>\n"
-        f"ðŸª„ ×¤×™×¦'×¨: {feature}\n"
-        f"ðŸŸ£ ×¢×“×™×¤×•×ª: {priority}\n\n"
-        f"<b>×ž×¦×‘ × ×•×›×—×™:</b> {status_text}\n"
-        f"<b>×¤×¨×•×ž×¤×˜ ×ž×©×•×¤×¨:</b> {has_prompt}\n\n"
-        f"ðŸ• × ×•×¦×¨: {created}\n"
-        f"ðŸ•‘ ×¢×•×“×›×Ÿ: {updated}"
+def fmt_matchmaking(d):
+    mid = d.get("id", "")
+    text = (
+        "\u1f7e3 <b>\u05d4\u05e6\u05e2\u05ea \u05e9\u05d9\u05d3\u05d5\u05da \u05d7\u05d3\u05e9\u05d4!</b>\n"
+        f"\u1f464 \u05e9\u05dd: {d.get('name','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f382 \u05d2\u05d9\u05dc: {d.get('age','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4cd \u05de\u05d9\u05e7\u05d5\u05dd: {d.get('location','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4de \u05d8\u05dc\u05e4\u05d5\u05df: {d.get('phone','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
     )
+    kb = [
+        [
+            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_match:{mid}"},
+            {"text": "\u1f50d \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_match:{mid}"},
+        ],
+        [
+            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
+            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05e4\u05d9\u05dc",    "url": f"{LOVABLE_URL}?message=\u05e9\u05e4\u05e8+\u05e4\u05e8\u05d5\u05e4\u05d9\u05dc:{d.get('name','')}"},
+        ],
+    ]
+    return text, kb
 
 
-# â”€â”€â”€ Incoming webhook: new Lovable request â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+def fmt_health(d):
+    hid = d.get("id", "")
+    text = (
+        "\u1fa7a <b>\u05d3\u05d9\u05d5\u05d5\u05d7 \u05e2\u05dc \u05ea\u05e7\u05dc\u05d4!</b>\n"
+        f"\u1f4cc \u05db\u05d5\u05ea\u05e8\u05ea: {d.get('title','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f464 \u05de\u05d3\u05d5\u05d5\u05d7: {d.get('reported_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
+        f"\u26a0\ufe0f \u05d3\u05d7\u05d9\u05e4\u05d5\u05ea: {d.get('urgency','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
+    )
+    kb = [
+        [
+            {"text": "\u2705 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9",         "callback_data": f"approve_health:{hid}"},
+            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
+        ],
+        [
+            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_health:{hid}"},
+            {"text": "\u1f4ca \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_health:{hid}"},
+        ],
+    ]
+    return text, kb
 
-@app.route("/webhook/lovable", methods=["POST"])
-def lovable_webhook():
+
+CALLBACK_RESPONSES = {
+    "close_lead":       ("\u2705 \u05d4\u05dc\u05d9\u05d3 \u05e0\u05e1\u05d2\u05e8 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4", "\u274c \u05dc\u05d9\u05d3 \u05e0\u05e1\u05d2\u05e8"),
+    "snooze_lead":      ("\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05e0\u05e7\u05d1\u05e2\u05d4 \u05dc\u05e2\u05d5\u05d3 2 \u05e9\u05e2\u05d5\u05ea", "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea"),
+    "approve_bug":      ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4 \u2014 \u05de\u05d8\u05e4\u05dc\u05d9\u05dd \u05e2\u05db\u05e9\u05d9\u05d5", "\u2705 \u05d1\u05d8\u05d9\u05e4\u05d5\u05dc"),
+    "complete_bug":     ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05e1\u05d5\u05de\u05e0\u05d4 \u05db\u05d4\u05d5\u05e9\u05dc\u05de\u05d4!", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
+    "run_fix":          ("\u1f680 \u05ea\u05d9\u05e7\u05d5\u05df \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9 \u05d4\u05d5\u05e4\u05e2\u05dc!", "\u1f680 \u05de\u05e8\u05d9\u05e5"),
+    "status_bug":       ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
+    "improve_bug":      ("\u2728 \u05e9\u05d5\u05dc\u05d7 \u05dc-Lovable \u05dc\u05e9\u05d9\u05e4\u05d5\u05e8", "\u2728"),
+    "approve_request":  ("\u2705 \u05d4\u05d1\u05e7\u05e9\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4!", "\u2705 \u05d0\u05d5\u05e9\u05e8"),
+    "reject_request":   ("\u274c \u05d4\u05d1\u05e7\u05e9\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4", "\u274c \u05e0\u05d3\u05d7\u05d4"),
+    "improve_request":  ("\u2728 \u05e9\u05d5\u05dc\u05d7 \u05dc-Lovable \u05dc\u05e9\u05d9\u05e4\u05d5\u05e8", "\u2728"),
+    "complete_match":   ("\u2705 \u05d4\u05d1\u05e7\u05e9\u05d4 \u05d8\u05d5\u05e4\u05dc\u05d4 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4! \u1f389", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
+    "status_match":     ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
+    "approve_health":   ("\u2705 \u05d4\u05d3\u05d9\u05d5\u05d5\u05d7 \u05d4\u05ea\u05e7\u05d1\u05dc \u2014 \u05de\u05d8\u05e4\u05dc\u05d9\u05dd", "\u2705"),
+    "complete_health":  ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05ea\u05d5\u05e7\u05e0\u05d4!", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
+    "status_health":    ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
+}
+
+
+def handle_webhook(bot_key, formatter):
     try:
         data = request.get_json() if request.is_json else request.form.to_dict()
         if not data:
             return jsonify({"status": "error", "message": "Empty payload"}), 400
-
-        rid = data.get("id") or f"req_{len(request_store) + 1}"
-        now = time.time()
-        request_store[rid] = {
-            "data":            data,
-            "improved_prompt": None,
-            "status":          "created",
-            "created_at":      now,
-            "updated_at":      now,
-        }
-        logging.info(f"[lovable] Stored rid={rid} feature={data.get('feature')}")
-
-        feature  = data.get("feature",      "×œ× ×¦×•×™×Ÿ")
-        priority = data.get("priority",     "×œ× ×¦×•×™×Ÿ")
-        req_by   = data.get("requested_by", "×œ× ×¦×•×™×Ÿ")
-        details  = data.get("details",      "×œ× ×¦×•×™×Ÿ")
-        pe       = {"×’×‘×•×”×”": "ðŸ”´", "×‘×™× ×•× ×™×ª": "ðŸŸ¡", "× ×ž×•×›×”": "ðŸŸ¢"}.get(priority, "ðŸŸ£")
-
-        text = (
-            f"ðŸŸ£ <b>×‘×§×©×” ×—×“×©×” ×‘-Lovable!</b>\n"
-            f"ðŸª„ ×¤×™×¦'×¨: {feature}\n"
-            f"{pe} ×¢×“×™×¤×•×ª: {priority}\n"
-            f"ðŸ‘¤ ×ž×‘×§×©: {req_by}\n"
-            f"ðŸ“ ×¤×¨×˜×™×: {details}\n"
-            f"ðŸ”‘ ID: <code>{rid}</code>"
-        )
-
-        result = tg_send(CHAT_ID, text, main_keyboard(rid))
-        return jsonify({
-            "status":      "ok",
-            "request_id":  rid,
-            "telegram_ok": result.get("ok"),
-        }), 200
-
+        text, kb = formatter(data)
+        token = BOTS[bot_key]["token"]
+        ok = tg(token, CHAT_ID, text, kb)
+        return jsonify({"status": "ok" if ok else "error"}), 200 if ok else 500
     except Exception as e:
-        logging.error(f"[lovable] {e}")
+        logging.error(f"[{bot_key}] {e}")
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-# â”€â”€â”€ Telegram callback handler â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+@app.route("/webhook/leads",       methods=["POST"])
+def leads():         return handle_webhook("leads",       fmt_lead)
 
-@app.route("/webhook/callback", methods=["POST"])
-def callback():
+@app.route("/webhook/bugs",        methods=["POST"])
+def bugs():          return handle_webhook("bugs",        fmt_bug)
+
+@app.route("/webhook/lovable",     methods=["POST"])
+def lovable():       return handle_webhook("lovable",     fmt_lovable)
+
+@app.route("/webhook/matchmaking", methods=["POST"])
+def matchmaking():   return handle_webhook("matchmaking", fmt_matchmaking)
+
+@app.route("/webhook/health",      methods=["POST"])
+def health_report(): return handle_webhook("health",      fmt_health)
+
+
+@app.route("/webhook/callback/<bot_key>", methods=["POST"])
+def callback(bot_key):
     try:
         upd     = request.get_json()
         cb      = upd.get("callback_query", {})
-        cb_id   = cb.get("id", "")
+        cb_id   = cb.get("id")
         cb_data = cb.get("data", "")
-        message = cb.get("message", {})
-        msg_id  = message.get("message_id")
-        chat_id = message.get("chat", {}).get("id", CHAT_ID)
-
-        logging.info(f"[callback] callback_query_id={cb_id} data={cb_data} endpoint=/webhook/callback")
-
-        if not cb_data:
-            tg_answer(cb_id, "âš ï¸ ××™×Ÿ × ×ª×•× ×™×")
+        token   = BOTS.get(bot_key, {}).get("token")
+        if not token or not cb_data:
             return jsonify({"ok": True}), 200
-
-        if ":" not in cb_data:
-            tg_answer(cb_id, "âš ï¸ ×¤×•×¨×ž×˜ ×œ× ×ª×§×™×Ÿ")
-            return jsonify({"ok": True}), 200
-
-        action, rid = cb_data.split(":", 1)
-        store       = request_store.get(rid)
-        now         = time.time()
-
-        logging.info(f"[callback] action={action} rid={rid} found={'yes' if store else 'NO'}")
-
-        # â”€â”€ HANDLER: improve_prompt â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        if action == "improve_prompt":
-            if not store:
-                tg_answer(cb_id, "âŒ ×‘×§×©×” ×œ× × ×ž×¦××”", show_alert=True)
-                logging.warning(f"[improve_prompt] rid={rid} NOT in store")
-                return jsonify({"ok": True, "handler": "improve_prompt", "result": "FAIL_no_rid"}), 200
-
-            tg_answer(cb_id, "â³ ×ž×™×™×¦×¨ ×¤×¨×•×ž×¤×˜ ×ž×©×•×¤×¨...")
-
-            improved = build_improved_prompt(store["data"])
-            store["improved_prompt"] = improved
-            store["status"]          = "improved"
-            store["updated_at"]      = now
-
-            result = tg_edit(chat_id, msg_id, improved, keyboard=[
-                [
-                    {"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "callback_data": f"send_to_lovable:{rid}"},
-                    {"text": "ðŸ“Š ×¡×˜×˜×•×¡",          "callback_data": f"status:{rid}"},
-                ],
-                [{"text": "ðŸ”— ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL}],
-            ])
-
-            logging.info(
-                f"[callback] HANDLER=improve_prompt | rid={rid} | "
-                f"callback_query_id={cb_id} | edit_ok={result.get('ok')} | RESULT=PASS"
-            )
-            return jsonify({
-                "ok":      True,
-                "handler": "improve_prompt",
-                "rid":     rid,
-                "edit_ok": result.get("ok"),
-                "result":  "PASS" if result.get("ok") else "FAIL_tg_edit",
-            }), 200
-
-        # â”€â”€ HANDLER: send_to_lovable â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        elif action == "send_to_lovable":
-            if not store:
-                tg_answer(cb_id, "âŒ ×‘×§×©×” ×œ× × ×ž×¦××”", show_alert=True)
-                logging.warning(f"[send_to_lovable] rid={rid} NOT in store")
-                return jsonify({"ok": True, "handler": "send_to_lovable", "result": "FAIL_no_rid"}), 200
-
-            tg_answer(cb_id, "ðŸš€ ×©×•×œ×— ×œ-Lovable...")
-
-            msg_text = build_send_message(rid, store)
-            store["status"]     = "sent"
-            store["updated_at"] = now
-
-            result = tg_send(chat_id, msg_text, keyboard=[
-                [{"text": "ðŸ”— ×¤×ª×— ×‘-Lovable", "url": LOVABLE_URL}],
-                [{"text": "ðŸ“Š ×¡×˜×˜×•×¡", "callback_data": f"status:{rid}"}],
-            ])
-
-            logging.info(
-                f"[callback] HANDLER=send_to_lovable | rid={rid} | "
-                f"callback_query_id={cb_id} | send_ok={result.get('ok')} | RESULT=PASS"
-            )
-            return jsonify({
-                "ok":      True,
-                "handler": "send_to_lovable",
-                "rid":     rid,
-                "send_ok": result.get("ok"),
-                "result":  "PASS" if result.get("ok") else "FAIL_tg_send",
-            }), 200
-
-        # â”€â”€ HANDLER: status â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        elif action == "status":
-            if not store:
-                tg_answer(cb_id, "âŒ ×‘×§×©×” ×œ× × ×ž×¦××”", show_alert=True)
-                logging.warning(f"[status] rid={rid} NOT in store")
-                return jsonify({"ok": True, "handler": "status", "result": "FAIL_no_rid"}), 200
-
-            tg_answer(cb_id, "ðŸ“Š ×˜×•×¢×Ÿ ×¡×˜×˜×•×¡...")
-
-            msg_text = build_status_message(rid, store)
-            result   = tg_send(chat_id, msg_text, keyboard=[
-                [{"text": "âœ¨ ×©×¤×¨ ×¤×¨×•×ž×¤×˜",   "callback_data": f"improve_prompt:{rid}"}],
-                [{"text": "ðŸš€ ×©×œ×— ×œ-Lovable","callback_data": f"send_to_lovable:{rid}"}],
-            ])
-
-            logging.info(
-                f"[callback] HANDLER=status | rid={rid} | "
-                f"callback_query_id={cb_id} | send_ok={result.get('ok')} | RESULT=PASS"
-            )
-            return jsonify({
-                "ok":      True,
-                "handler": "status",
-                "rid":     rid,
-                "send_ok": result.get("ok"),
-                "status":  store.get("status"),
-                "result":  "PASS" if result.get("ok") else "FAIL_tg_send",
-            }), 200
-
-        # â”€â”€ HANDLER: approve â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        elif action == "approve":
-            tg_answer(cb_id, "âœ… ××•×©×¨!")
-            if store:
-                store["status"]     = "approved"
-                store["updated_at"] = now
-            result = tg_send(chat_id, f"âœ… ×”×‘×§×©×” <code>{rid}</code> <b>××•×©×¨×”!</b>")
-            logging.info(f"[callback] HANDLER=approve | rid={rid} | send_ok={result.get('ok')}")
-            return jsonify({"ok": True, "handler": "approve", "rid": rid}), 200
-
-        # â”€â”€ HANDLER: reject â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        elif action == "reject":
-            tg_answer(cb_id, "âŒ × ×“×—×”")
-            if store:
-                store["status"]     = "rejected"
-                store["updated_at"] = now
-            result = tg_send(chat_id, f"âŒ ×”×‘×§×©×” <code>{rid}</code> <b>× ×“×—×ª×”.</b>")
-            logging.info(f"[callback] HANDLER=reject | rid={rid} | send_ok={result.get('ok')}")
-            return jsonify({"ok": True, "handler": "reject", "rid": rid}), 200
-
-        # â”€â”€ UNKNOWN ACTION â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-        else:
-            tg_answer(cb_id, f"âš ï¸ ×¤×¢×•×œ×” ×œ× ×ž×•×›×¨×ª: {action}")
-            logging.warning(f"[callback] UNKNOWN action={action} rid={rid}")
-            return jsonify({"ok": True, "handler": "unknown", "action": action}), 200
-
+        action  = cb_data.split(":")[0]
+        rec_id  = cb_data.split(":")[1] if ":" in cb_data else ""
+        long_msg, short_msg = CALLBACK_RESPONSES.get(action, ("\u2705 \u05d1\u05d5\u05e6\u05e2", "\u2705"))
+        msg = f"{long_msg}\n\u1f194 \u05de\u05d6\u05d4\u05d4: {rec_id}" if rec_id else long_msg
+        tg(token, CHAT_ID, msg)
+        answer_callback(token, cb_id, short_msg)
+        return jsonify({"ok": True}), 200
     except Exception as e:
-        logging.error(f"[callback] EXCEPTION: {e}")
-        return jsonify({"ok": True, "error": str(e)}), 200
+        return jsonify({"ok": True}), 200
 
-
-# â”€â”€â”€ Health check â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    return jsonify({
-        "status":          "ok",
-        "bot":             "klik_lovable_bot",
-        "version":         "2.0",
-        "requests_stored": len(request_store),
-    }), 200
+    return jsonify({"status": "ok", "bots": list(BOTS.keys()), "version": "3.1"}), 200
 
-
-# â”€â”€â”€ Entry point â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    print(f"ðŸš€ klik_lovable_bot v2.0 â€” port {port}")
+    port = int(os.environ.get("PORT", 8080))   # \u2190 \u05ea\u05d9\u05e7\u05d5\u05df 2: PORT \u05d3\u05d9\u05e0\u05de\u05d9
+    print(f"\u1f680 Klik Multi-Bot Agent v3.1 \u2014 port {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
