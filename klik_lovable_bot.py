@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 
 # ========= ENV =========
 BOT_TOKEN = os.environ.get(8690987639:AAFshCEG_C1Jlr6s2ocwVX70B7SOOtp74w0, "").strip()
-CHAT_ID = int(os.environ.get("CHAT_ID", 326460077))
+CHAT_ID = int(os.environ.get(326460077))
 LOVABLE_URL = os.environ.get(https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325)
     "LOVABLE_URL",
     "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325"
