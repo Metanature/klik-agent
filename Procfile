@@ -1,1 +1,1 @@
-web: python klik_lovable_bot.py
+web: gunicorn klik_lovable_bot:app
