@@ -1,242 +1,247 @@
 #!/usr/bin/env python3
-"""
-Klik Multi-Bot Agent v3.1 \u2014 5 Bots + Inline Keyboards + Callback Handling
-"""
+"""klik_lovable_bot v2.1 - Python 3.11 compatible, no f-string backslash"""
 from flask import Flask, request, jsonify
-import requests, json, logging, os          # \u2190 \u05ea\u05d9\u05e7\u05d5\u05df 1: \u05e0\u05d5\u05e1\u05e3 os
+import requests, logging, os, time
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-CHAT_ID = 326460077
-BOTS = {
-    "leads":       {"token": "8643090938:AAGo55jGaZFlzKJm63_QPcpQPp2Ow5p5vFw", "name": "\u05dc\u05d9\u05d3\u05d9\u05dd \u05e0\u05db\u05e0\u05e1\u05d9\u05dd"},
-    "bugs":        {"token": "8785442399:AAFTsUKKe55l31yjfeAs_-g2TRxYqtvWdp8", "name": "\u05ea\u05e7\u05dc\u05d5\u05ea \u05d8\u05db\u05e0\u05d9\u05d5\u05ea"},
-    "lovable":     {"token": "8690987639:AAH83slPs_j_H7pGSfpeGWTWirCsiJHi7Ks", "name": "\u05d1\u05e7\u05e9\u05d5\u05ea Lovable"},
-    "matchmaking": {"token": "8622414362:AAFYG8Qk_5oQYTmOdxx6CccMaDhh2fpTZmk", "name": "\u05d4\u05e6\u05e2\u05d5\u05ea \u05dc\u05e9\u05d9\u05d3\u05d5\u05db\u05d9\u05dd"},
-    "health":      {"token": "8706328171:AAHGB5bLM1oe4ZdqkPR4AEk4ld_kp6jhMe8", "name": "\u05d3\u05d9\u05d5\u05d5\u05d7 \u05e2\u05dc \u05ea\u05e7\u05dc\u05d4"},
-}
+BOT_TOKEN   = "8690987639:AAH83slPs_j_H7pGSfpeGWTWirCsiJHi7Ks"
+CHAT_ID     = 326460077
 LOVABLE_URL = "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325"
+BASE_URL    = "https://api.telegram.org/bot" + BOT_TOKEN
+
+# Hebrew constants - defined OUTSIDE f-strings (Python 3.11 compatible)
+NA   = "\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df"
+HIGH = "\u05d2\u05d1\u05d5\u05d4\u05d4"
+MED  = "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea"
+LOW  = "\u05e0\u05de\u05d5\u05db\u05d4"
+
+request_store = {}
 
 
-def clean_phone(phone):
-    digits = phone.replace("-","").replace(" ","").replace("+","")
-    if digits.startswith("972"):
-        return digits
-    return "972" + digits.lstrip("0")
-
-
-def tg(token, chat_id, text, keyboard=None):
+def tg_send(chat_id, text, keyboard=None):
     payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
     if keyboard:
         payload["reply_markup"] = {"inline_keyboard": keyboard}
-    r = requests.post(f"https://api.telegram.org/bot{token}/sendMessage",
-                      json=payload, timeout=10)
-    return r.json().get("ok", False)
+    r = requests.post(BASE_URL + "/sendMessage", json=payload, timeout=10)
+    res = r.json()
+    logging.info("[tg_send] ok=" + str(res.get("ok")))
+    return res
 
 
-def answer_callback(token, callback_id, text="\u2705"):
-    requests.post(f"https://api.telegram.org/bot{token}/answerCallbackQuery",
-                  json={"callback_query_id": callback_id, "text": text}, timeout=5)
+def tg_edit(chat_id, message_id, text, keyboard=None):
+    payload = {"chat_id": chat_id, "message_id": message_id,
+               "text": text, "parse_mode": "HTML"}
+    if keyboard:
+        payload["reply_markup"] = {"inline_keyboard": keyboard}
+    r = requests.post(BASE_URL + "/editMessageText", json=payload, timeout=10)
+    res = r.json()
+    logging.info("[tg_edit] ok=" + str(res.get("ok")) + " msg=" + str(message_id))
+    return res
 
 
-def fmt_lead(d):
-    lid   = d.get("id", "")
-    phone = clean_phone(d.get("phone", "0500000000"))
-    text = (
-        "\u1f525 <b>\u05dc\u05e7\u05d5\u05d7 \u05d7\u05d3\u05e9!</b>\n"
-        f"\u1f464 \u05e9\u05dd: {d.get('name','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f527 \u05e9\u05d9\u05e8\u05d5\u05ea: {d.get('service','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4cd \u05de\u05d9\u05e7\u05d5\u05dd: {d.get('location','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4de \u05d8\u05dc\u05e4\u05d5\u05df: {d.get('phone','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
-    )
-    kb = [
-        [
-            {"text": "\u1f4de \u05d4\u05ea\u05e7\u05e9\u05e8 \u05e2\u05db\u05e9\u05d9\u05d5", "url": f"https://wa.me/{phone}?text=\u05e9\u05dc\u05d5\u05dd"},
-            {"text": "\u1f4ac WhatsApp",     "url": f"https://wa.me/{phone}"},
-        ],
-        [
-            {"text": "\u274c \u05e1\u05d2\u05d5\u05e8 \u05dc\u05d9\u05d3",   "callback_data": f"close_lead:{lid}"},
-            {"text": "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea 2\u05e9", "callback_data": f"snooze_lead:{lid}"},
-        ],
+def tg_answer(callback_id, text="OK", show_alert=False):
+    requests.post(BASE_URL + "/answerCallbackQuery",
+                  json={"callback_query_id": callback_id,
+                        "text": text, "show_alert": show_alert}, timeout=5)
+
+
+def main_keyboard(rid):
+    return [
+        [{"text": "\u2705 \u05d0\u05e9\u05e8", "callback_data": "approve:" + rid},
+         {"text": "\u274c \u05d3\u05d7\u05d4", "callback_data": "reject:"  + rid}],
+        [{"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8",
+          "callback_data": "improve_prompt:" + rid},
+         {"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1",
+          "callback_data": "status:" + rid}],
+        [{"text": "\ud83d\ude80 \u05e9\u05dc\u05d7 \u05dc-Lovable",
+          "callback_data": "send_to_lovable:" + rid},
+         {"text": "\ud83d\udd17 \u05e4\u05ea\u05d7 Lovable", "url": LOVABLE_URL}],
     ]
-    return text, kb
 
 
-def fmt_bug(d):
-    bid = d.get("id", "")
-    sev = {"\u05d2\u05d1\u05d5\u05d4\u05d4": "\u1f534", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea": "\u1f7e1", "\u05e0\u05de\u05d5\u05db\u05d4": "\u1f7e2"}.get(d.get("severity",""), "\u1f534")
-    text = (
-        "\u1f534 <b>\u05ea\u05e7\u05dc\u05d4 \u05d7\u05d3\u05e9\u05d4!</b>\n"
-        f"\u1f4cc \u05e0\u05d5\u05e9\u05d0: {d.get('title','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"{sev} \u05d7\u05d5\u05de\u05e8\u05d4: {d.get('severity','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f464 \u05de\u05d3\u05d5\u05d5\u05d7: {d.get('reported_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f517 \u05e7\u05d9\u05e9\u05d5\u05e8: {d.get('url','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
-    )
-    kb = [
-        [
-            {"text": "\u2705 \u05d0\u05e9\u05e8 \u05d5\u05ea\u05e7\u05df",      "callback_data": f"approve_bug:{bid}"},
-            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_bug:{bid}"},
-        ],
-        [
-            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
-            {"text": "\u1f680 \u05d4\u05e8\u05e5 \u05e2\u05db\u05e9\u05d9\u05d5",     "callback_data": f"run_fix:{bid}"},
-        ],
-        [
-            {"text": "\u1f50d \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_bug:{bid}"},
-            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e2\u05d5\u05d3",        "callback_data": f"improve_bug:{bid}"},
-        ],
-    ]
-    return text, kb
+def build_improved_prompt(data):
+    feature  = data.get("feature")      or NA
+    priority = data.get("priority")     or NA
+    req_by   = data.get("requested_by") or NA
+    details  = data.get("details")      or NA
+    pri_map  = {HIGH: "\ud83d\udd34", MED: "\ud83d\udfe1", LOW: "\ud83d\udfe2"}
+    pe       = pri_map.get(priority, "\ud83d\udfe3")
+    return "\n".join([
+        "\u2728 <b>\u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05de\u05e9\u05d5\u05e4\u05e8 \u05dc-Lovable</b>",
+        "",
+        "<b>1. \u05de\u05d8\u05e8\u05d4:</b> " + feature,
+        "",
+        "<b>2. \u05d1\u05e2\u05d9\u05d4:</b> " + details,
+        "",
+        "<b>3. \u05de\u05d4 \u05e6\u05e8\u05d9\u05da \u05dc\u05e9\u05e0\u05d5\u05ea:</b>",
+        "\u2022 UI \u05d0\u05dd \u05e0\u05d3\u05e8\u05e9",
+        "\u2022 \u05dc\u05d5\u05d2\u05d9\u05e7\u05d4 \u05e2\u05e1\u05e7\u05d9\u05ea",
+        "\u2022 State \u05d0\u05dd \u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9",
+        "",
+        "<b>4. \u05d3\u05e8\u05d9\u05e9\u05d5\u05ea:</b>",
+        "\u2022 " + feature,
+        "\u2022 " + pe + " " + priority,
+        "\u2022 \u05de\u05d1\u05e7\u05e9: " + req_by,
+        "\u2022 " + details,
+        "",
+        "<b>5. \u05de\u05d2\u05d1\u05dc\u05d5\u05ea:</b>",
+        "\u2022 \u05d0\u05dc \u05ea\u05e9\u05e0\u05d4 \u05e7\u05d5\u05d3 \u05e9\u05dc\u05d0 \u05e7\u05e9\u05d5\u05e8",
+        "\u2022 \u05d0\u05dc \u05ea\u05e9\u05d1\u05d5\u05e8 \u05e4\u05d9\u05e6\u05e8\u05d9\u05dd \u05e7\u05d9\u05d9\u05de\u05d9\u05dd",
+        "",
+        "<b>6. \u05ea\u05d5\u05e6\u05d0\u05d4:</b>",
+        "\u05d4\u05e4\u05d9\u05e6\u05e8 \"" + feature + "\" \u05e2\u05d5\u05d1\u05d3 \u05d1\u05de\u05dc\u05d5\u05d0\u05d5.",
+    ])
 
 
-def fmt_lovable(d):
-    rid = d.get("id", "")
-    pri = {"\u05d2\u05d1\u05d5\u05d4\u05d4": "\u1f534", "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea": "\u1f7e1", "\u05e0\u05de\u05d5\u05db\u05d4": "\u1f7e2"}.get(d.get("priority",""), "\u1f535")
-    details = d.get("details","")
-    text = (
-        "\u1f535 <b>\u05d1\u05e7\u05e9\u05d4 \u05d7\u05d3\u05e9\u05d4 \u05d1-Lovable!</b>\n"
-        f"\u1fa84 \u05e4\u05d9\u05e6'\u05e8: {d.get('feature','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"{pri} \u05e2\u05d3\u05d9\u05e4\u05d5\u05ea: {d.get('priority','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f464 \u05de\u05d1\u05e7\u05e9: {d.get('requested_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4dd \u05e4\u05e8\u05d8\u05d9\u05dd: {details}"
-    )
-    kb = [
-        [
-            {"text": "\u2705 \u05d0\u05e9\u05e8",            "callback_data": f"approve_request:{rid}"},
-            {"text": "\u274c \u05d3\u05d7\u05d4",            "callback_data": f"reject_request:{rid}"},
-        ],
-        [
-            {"text": "\u1f680 \u05e9\u05dc\u05d7 \u05dc-Lovable", "url": LOVABLE_URL},
-            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e2\u05d5\u05d3",        "callback_data": f"improve_request:{rid}"},
-        ],
-    ]
-    return text, kb
-
-
-def fmt_matchmaking(d):
-    mid = d.get("id", "")
-    text = (
-        "\u1f7e3 <b>\u05d4\u05e6\u05e2\u05ea \u05e9\u05d9\u05d3\u05d5\u05da \u05d7\u05d3\u05e9\u05d4!</b>\n"
-        f"\u1f464 \u05e9\u05dd: {d.get('name','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f382 \u05d2\u05d9\u05dc: {d.get('age','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4cd \u05de\u05d9\u05e7\u05d5\u05dd: {d.get('location','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4de \u05d8\u05dc\u05e4\u05d5\u05df: {d.get('phone','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
-    )
-    kb = [
-        [
-            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_match:{mid}"},
-            {"text": "\u1f50d \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_match:{mid}"},
-        ],
-        [
-            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
-            {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05e4\u05d9\u05dc",    "url": f"{LOVABLE_URL}?message=\u05e9\u05e4\u05e8+\u05e4\u05e8\u05d5\u05e4\u05d9\u05dc:{d.get('name','')}"},
-        ],
-    ]
-    return text, kb
-
-
-def fmt_health(d):
-    hid = d.get("id", "")
-    text = (
-        "\u1fa7a <b>\u05d3\u05d9\u05d5\u05d5\u05d7 \u05e2\u05dc \u05ea\u05e7\u05dc\u05d4!</b>\n"
-        f"\u1f4cc \u05db\u05d5\u05ea\u05e8\u05ea: {d.get('title','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f464 \u05de\u05d3\u05d5\u05d5\u05d7: {d.get('reported_by','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u1f4dd \u05ea\u05d9\u05d0\u05d5\u05e8: {d.get('description','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}\n"
-        f"\u26a0\ufe0f \u05d3\u05d7\u05d9\u05e4\u05d5\u05ea: {d.get('urgency','\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df')}"
-    )
-    kb = [
-        [
-            {"text": "\u2705 \u05d0\u05d9\u05e9\u05e8\u05ea\u05d9",         "callback_data": f"approve_health:{hid}"},
-            {"text": "\u1f513 \u05e4\u05ea\u05d7 \u05d1-Lovable", "url": LOVABLE_URL},
-        ],
-        [
-            {"text": "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd",          "callback_data": f"complete_health:{hid}"},
-            {"text": "\u1f4ca \u05e1\u05d8\u05d8\u05d5\u05e1",         "callback_data": f"status_health:{hid}"},
-        ],
-    ]
-    return text, kb
-
-
-CALLBACK_RESPONSES = {
-    "close_lead":       ("\u2705 \u05d4\u05dc\u05d9\u05d3 \u05e0\u05e1\u05d2\u05e8 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4", "\u274c \u05dc\u05d9\u05d3 \u05e0\u05e1\u05d2\u05e8"),
-    "snooze_lead":      ("\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05e0\u05e7\u05d1\u05e2\u05d4 \u05dc\u05e2\u05d5\u05d3 2 \u05e9\u05e2\u05d5\u05ea", "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea"),
-    "approve_bug":      ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4 \u2014 \u05de\u05d8\u05e4\u05dc\u05d9\u05dd \u05e2\u05db\u05e9\u05d9\u05d5", "\u2705 \u05d1\u05d8\u05d9\u05e4\u05d5\u05dc"),
-    "complete_bug":     ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05e1\u05d5\u05de\u05e0\u05d4 \u05db\u05d4\u05d5\u05e9\u05dc\u05de\u05d4!", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
-    "run_fix":          ("\u1f680 \u05ea\u05d9\u05e7\u05d5\u05df \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9 \u05d4\u05d5\u05e4\u05e2\u05dc!", "\u1f680 \u05de\u05e8\u05d9\u05e5"),
-    "status_bug":       ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
-    "improve_bug":      ("\u2728 \u05e9\u05d5\u05dc\u05d7 \u05dc-Lovable \u05dc\u05e9\u05d9\u05e4\u05d5\u05e8", "\u2728"),
-    "approve_request":  ("\u2705 \u05d4\u05d1\u05e7\u05e9\u05d4 \u05d0\u05d5\u05e9\u05e8\u05d4!", "\u2705 \u05d0\u05d5\u05e9\u05e8"),
-    "reject_request":   ("\u274c \u05d4\u05d1\u05e7\u05e9\u05d4 \u05e0\u05d3\u05d7\u05ea\u05d4", "\u274c \u05e0\u05d3\u05d7\u05d4"),
-    "improve_request":  ("\u2728 \u05e9\u05d5\u05dc\u05d7 \u05dc-Lovable \u05dc\u05e9\u05d9\u05e4\u05d5\u05e8", "\u2728"),
-    "complete_match":   ("\u2705 \u05d4\u05d1\u05e7\u05e9\u05d4 \u05d8\u05d5\u05e4\u05dc\u05d4 \u05d1\u05d4\u05e6\u05dc\u05d7\u05d4! \u1f389", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
-    "status_match":     ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
-    "approve_health":   ("\u2705 \u05d4\u05d3\u05d9\u05d5\u05d5\u05d7 \u05d4\u05ea\u05e7\u05d1\u05dc \u2014 \u05de\u05d8\u05e4\u05dc\u05d9\u05dd", "\u2705"),
-    "complete_health":  ("\u2705 \u05d4\u05ea\u05e7\u05dc\u05d4 \u05ea\u05d5\u05e7\u05e0\u05d4!", "\u2705 \u05d4\u05d5\u05e9\u05dc\u05dd"),
-    "status_health":    ("\u1f50d \u05d1\u05d5\u05d3\u05e7 \u05e1\u05d8\u05d8\u05d5\u05e1...", "\u1f50d"),
-}
-
-
-def handle_webhook(bot_key, formatter):
+@app.route("/webhook/lovable", methods=["POST"])
+def lovable_webhook():
     try:
         data = request.get_json() if request.is_json else request.form.to_dict()
         if not data:
-            return jsonify({"status": "error", "message": "Empty payload"}), 400
-        text, kb = formatter(data)
-        token = BOTS[bot_key]["token"]
-        ok = tg(token, CHAT_ID, text, kb)
-        return jsonify({"status": "ok" if ok else "error"}), 200 if ok else 500
+            return jsonify({"status": "error", "message": "Empty"}), 400
+        rid = data.get("id") or ("req_" + str(len(request_store) + 1))
+        now = time.time()
+        request_store[rid] = {"data": data, "improved_prompt": None,
+                               "status": "created", "created_at": now, "updated_at": now}
+        feature  = data.get("feature")      or NA
+        priority = data.get("priority")     or NA
+        req_by   = data.get("requested_by") or NA
+        details  = data.get("details")      or NA
+        pri_map  = {HIGH: "\ud83d\udd34", MED: "\ud83d\udfe1", LOW: "\ud83d\udfe2"}
+        pe       = pri_map.get(priority, "\ud83d\udfe3")
+        text = ("\ud83d\udfe3 <b>\u05d1\u05e7\u05e9\u05d4 \u05d7\u05d3\u05e9\u05d4 \u05d1-Lovable!</b>\n"
+                + "\ud83e\ude84 " + feature + "\n"
+                + pe + " " + priority + "\n"
+                + "\ud83d\udc64 " + req_by + "\n"
+                + "\ud83d\udcdd " + details + "\n"
+                + "\ud83d\udd11 ID: " + rid)
+        result = tg_send(CHAT_ID, text, main_keyboard(rid))
+        logging.info("[lovable] rid=" + rid + " tg_ok=" + str(result.get("ok")))
+        return jsonify({"status": "ok", "request_id": rid,
+                        "telegram_ok": result.get("ok")}), 200
     except Exception as e:
-        logging.error(f"[{bot_key}] {e}")
+        logging.error("[lovable] " + str(e))
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-@app.route("/webhook/leads",       methods=["POST"])
-def leads():         return handle_webhook("leads",       fmt_lead)
-
-@app.route("/webhook/bugs",        methods=["POST"])
-def bugs():          return handle_webhook("bugs",        fmt_bug)
-
-@app.route("/webhook/lovable",     methods=["POST"])
-def lovable():       return handle_webhook("lovable",     fmt_lovable)
-
-@app.route("/webhook/matchmaking", methods=["POST"])
-def matchmaking():   return handle_webhook("matchmaking", fmt_matchmaking)
-
-@app.route("/webhook/health",      methods=["POST"])
-def health_report(): return handle_webhook("health",      fmt_health)
-
-
-@app.route("/webhook/callback/<bot_key>", methods=["POST"])
-def callback(bot_key):
+@app.route("/webhook/callback", methods=["POST"])
+def callback():
     try:
         upd     = request.get_json()
         cb      = upd.get("callback_query", {})
-        cb_id   = cb.get("id")
+        cb_id   = cb.get("id", "")
         cb_data = cb.get("data", "")
-        token   = BOTS.get(bot_key, {}).get("token")
-        if not token or not cb_data:
+        message = cb.get("message", {})
+        msg_id  = message.get("message_id")
+        chat_id = message.get("chat", {}).get("id", CHAT_ID)
+        logging.info("[cb] id=" + cb_id + " data=" + cb_data)
+        if not cb_data or ":" not in cb_data:
+            tg_answer(cb_id, "no data")
             return jsonify({"ok": True}), 200
-        action  = cb_data.split(":")[0]
-        rec_id  = cb_data.split(":")[1] if ":" in cb_data else ""
-        long_msg, short_msg = CALLBACK_RESPONSES.get(action, ("\u2705 \u05d1\u05d5\u05e6\u05e2", "\u2705"))
-        msg = f"{long_msg}\n\u1f194 \u05de\u05d6\u05d4\u05d4: {rec_id}" if rec_id else long_msg
-        tg(token, CHAT_ID, msg)
-        answer_callback(token, cb_id, short_msg)
-        return jsonify({"ok": True}), 200
+        action, rid = cb_data.split(":", 1)
+        store = request_store.get(rid)
+        now   = time.time()
+
+        if action == "improve_prompt":
+            if not store:
+                tg_answer(cb_id, "Not found")
+                return jsonify({"ok": True, "handler": "improve_prompt", "result": "FAIL_no_rid"}), 200
+            tg_answer(cb_id, "Building prompt...")
+            improved = build_improved_prompt(store["data"])
+            store["improved_prompt"] = improved
+            store["status"] = "improved"
+            store["updated_at"] = now
+            result = tg_edit(chat_id, msg_id, improved, keyboard=[
+                [{"text": "\ud83d\ude80 \u05e9\u05dc\u05d7 \u05dc-Lovable",
+                  "callback_data": "send_to_lovable:" + rid},
+                 {"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1",
+                  "callback_data": "status:" + rid}],
+                [{"text": "\ud83d\udd17 Lovable", "url": LOVABLE_URL}],
+            ])
+            logging.info("[cb] HANDLER=improve_prompt rid=" + rid + " ok=" + str(result.get("ok")))
+            return jsonify({"ok": True, "handler": "improve_prompt", "rid": rid,
+                           "edit_ok": result.get("ok"),
+                           "result": "PASS" if result.get("ok") else "FAIL"}), 200
+
+        elif action == "send_to_lovable":
+            if not store:
+                tg_answer(cb_id, "Not found")
+                return jsonify({"ok": True, "handler": "send_to_lovable", "result": "FAIL_no_rid"}), 200
+            tg_answer(cb_id, "Sending...")
+            prompt  = store.get("improved_prompt") or build_improved_prompt(store["data"])
+            feature = store["data"].get("feature") or NA
+            msg = ("\ud83d\ude80 <b>\u05e9\u05dc\u05d9\u05d7\u05d4 \u05dc-Lovable</b>\n"
+                   + "\ud83d\udd11 ID: " + rid + "\n"
+                   + "\ud83e\ude84 " + feature + "\n\n"
+                   + prompt)
+            store["status"] = "sent"
+            store["updated_at"] = now
+            result = tg_send(chat_id, msg, keyboard=[
+                [{"text": "\ud83d\udd17 Lovable", "url": LOVABLE_URL}],
+                [{"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1",
+                  "callback_data": "status:" + rid}],
+            ])
+            logging.info("[cb] HANDLER=send_to_lovable rid=" + rid + " ok=" + str(result.get("ok")))
+            return jsonify({"ok": True, "handler": "send_to_lovable", "rid": rid,
+                           "send_ok": result.get("ok"),
+                           "result": "PASS" if result.get("ok") else "FAIL"}), 200
+
+        elif action == "status":
+            if not store:
+                tg_answer(cb_id, "Not found")
+                return jsonify({"ok": True, "handler": "status", "result": "FAIL_no_rid"}), 200
+            tg_answer(cb_id, "Loading...")
+            feature = store["data"].get("feature") or NA
+            status  = store.get("status", "unknown")
+            has_p   = "\u2705 \u05db\u05df" if store.get("improved_prompt") else "\u274c \u05d8\u05e8\u05dd"
+            msg = ("\ud83d\udcca <b>\u05e1\u05d8\u05d8\u05d5\u05e1</b>\n"
+                   + "\ud83d\udd11 ID: " + rid + "\n"
+                   + "\ud83e\ude84 " + feature + "\n"
+                   + "\ud83d\udccc \u05de\u05e6\u05d1: " + status + "\n"
+                   + "\u2728 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8: " + has_p)
+            result = tg_send(chat_id, msg, keyboard=[
+                [{"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8",
+                  "callback_data": "improve_prompt:" + rid}],
+                [{"text": "\ud83d\ude80 \u05e9\u05dc\u05d7 \u05dc-Lovable",
+                  "callback_data": "send_to_lovable:" + rid}],
+            ])
+            logging.info("[cb] HANDLER=status rid=" + rid + " ok=" + str(result.get("ok")))
+            return jsonify({"ok": True, "handler": "status", "rid": rid,
+                           "status": status,
+                           "result": "PASS" if result.get("ok") else "FAIL"}), 200
+
+        elif action == "approve":
+            tg_answer(cb_id, "Approved!")
+            if store:
+                store["status"] = "approved"; store["updated_at"] = now
+            tg_send(chat_id, "\u2705 \u05d1\u05e7\u05e9\u05d4 " + rid + " \u05d0\u05d5\u05e9\u05e8\u05d4!")
+            return jsonify({"ok": True, "handler": "approve", "rid": rid}), 200
+
+        elif action == "reject":
+            tg_answer(cb_id, "Rejected")
+            if store:
+                store["status"] = "rejected"; store["updated_at"] = now
+            tg_send(chat_id, "\u274c \u05d1\u05e7\u05e9\u05d4 " + rid + " \u05e0\u05d3\u05d7\u05ea\u05d4.")
+            return jsonify({"ok": True, "handler": "reject", "rid": rid}), 200
+
+        else:
+            tg_answer(cb_id, "Unknown: " + action)
+            return jsonify({"ok": True, "handler": "unknown", "action": action}), 200
+
     except Exception as e:
-        return jsonify({"ok": True}), 200
+        logging.error("[cb] EXCEPTION: " + str(e))
+        return jsonify({"ok": True, "error": str(e)}), 200
 
 
 @app.route("/health", methods=["GET"])
 def health_check():
-    return jsonify({"status": "ok", "bots": list(BOTS.keys()), "version": "3.1"}), 200
+    return jsonify({"status": "ok", "bot": "klik_lovable_bot",
+                    "version": "2.1", "requests_stored": len(request_store)}), 200
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
-    print(f"🚀 Klik Multi-Bot Agent v3.1 עולה על פורט {port}")
+    port = int(os.environ.get("PORT", 8080))
+    print("klik_lovable_bot v2.1 - port " + str(port))
     app.run(host="0.0.0.0", port=port, debug=False)
