@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python312", "python312Packages.pip"]
+
+[phases.install]
+cmds = ["pip install flask requests"]
+
+[start]
+cmd = "python klik_multi_agent.py"
