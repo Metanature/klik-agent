@@ -1,1 +1,1 @@
-web: gunicorn klik_multi_agent:app
+web: python klik_multi_agent.py
