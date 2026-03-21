@@ -237,6 +237,6 @@ def health_check():
 
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))   # \u2190 \u05ea\u05d9\u05e7\u05d5\u05df 2: PORT \u05d3\u05d9\u05e0\u05de\u05d9
-    print(f"\u1f680 Klik Multi-Bot Agent v3.1 \u2014 port {port}")
+    port = int(os.environ.get("PORT", 10000))
+    print(f"🚀 Klik Multi-Bot Agent v3.1 עולה על פורט {port}")
     app.run(host="0.0.0.0", port=port, debug=False)
