@@ -2,7 +2,7 @@
 nixPkgs = ["python312", "python312Packages.pip"]
 
 [phases.install]
-cmds = ["pip install flask requests"]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
 cmd = "gunicorn klik_lovable_bot:app"
