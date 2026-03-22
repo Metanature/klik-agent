@@ -476,7 +476,7 @@ def home():
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
-        "status": "ok", "version": "4.0",
+        "status": "ok", "version": "4.1",
         "lovable_token": bool(LOVABLE_TOKEN),
         "leads_token":   bool(LEADS_TOKEN),
         "requests":      len(request_store),
