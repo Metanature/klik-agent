@@ -41,7 +41,7 @@ def load_store():
 def save_store():
     try:
         with open(STORE_FILE, "w", encoding="utf-8") as f:
-json.dump(request_store, f, ensure_ascii=True, indent=2)
+            json.dump(request_store, f, ensure_ascii=True, indent=2)
     except Exception as e:
         logging.error("[store] save error: %s", e)
 
