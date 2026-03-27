@@ -1,36 +1,35 @@
 #!/usr/bin/env python3
-"""
-klik_agent v5.0 — Lovable Bot + Leads Bot + Tasks Bot
-Bots: @klik_lovable_bot | @klik_leads_bot | @Matan_klik_Architectbot
-"""
+# klik_agent v5.0 - Lovable Bot + Leads Bot + Tasks Bot
+# Bots: @klik_lovable_bot | @klik_leads_bot | @Matan_klik_Architectbot
+
 from flask import Flask, request, jsonify
 import requests, logging, os, time, json
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 
-# ── ENV ──────────────────────────────────────────────────────────
+# ENV
 LOVABLE_TOKEN = os.environ.get("BOT_TOKEN",        "").strip()
 LEADS_TOKEN   = os.environ.get("LEADS_BOT_TOKEN",  "").strip()
-TASKS_TOKEN   = os.environ.get("TASKS_BOT_TOKEN",  "8749435051:AAGQh4udNta3qJzeZta5N5dMfcuUqvJqEDQ").strip()
-CHAT_ID       = int(os.environ.get("CHAT_ID",       "326460077"))
+TASKS_TOKEN   = os.environ.get("TASKS_BOT_TOKEN",  "").strip()
+CHAT_ID       = int(os.environ.get("CHAT_ID", "326460077"))
 LOVABLE_URL   = os.environ.get("LOVABLE_URL",
     "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325").strip()
 
-# ── GUMLOOP ───────────────────────────────────────────────────────
+# GUMLOOP
 GUMLOOP_API_KEY  = "f68e93c16aad4774aa204e7b19fb6aa9"
 GUMLOOP_USER_ID  = "3IeYf3BuDTSBYlmFOlgIGBiDOLs2"
 GUMLOOP_PIPELINE = "mi7pWhLDxKFDFqYii16B2v"
 GUMLOOP_URL_API  = "https://api.gumloop.com/api/v1/start_pipeline"
 
-# ── CONST ─────────────────────────────────────────────────────────
-NA   = "לא צוין"
-HIGH = "גבוהה"
-MED  = "בינונית"
-LOW  = "נמוכה"
-PRIORITY_ICON = {HIGH: "🔴", MED: "🟡", LOW: "🟢"}
+# CONST
+NA   = "×œ× ×¦×•×™×Ÿ"
+HIGH = "×’×‘×•×”×”"
+MED  = "×‘×™× ×•× ×™×ª"
+LOW  = "× ×ž×•×›×”"
+PRIORITY_ICON = {HIGH: "ðŸ”´", MED: "ðŸŸ¡", LOW: "ðŸŸ¢"}
 
-# ── STORE ─────────────────────────────────────────────────────────
+# STORE
 STORE_FILE = "request_store.json"
 request_store = {}
 user_state = {}
@@ -57,7 +56,7 @@ def make_rid(data, prefix="req"):
     raw = (data.get("id") or "").strip()
     return raw if raw else prefix + "_" + str(int(time.time()))
 
-# ── TELEGRAM ──────────────────────────────────────────────────────
+# TELEGRAM
 def tg(token, method, payload, timeout=10):
     if not token:
         logging.error("[tg] token missing for %s", method)
@@ -91,14 +90,13 @@ def tg_answer(token, cb_id, text="OK", alert=False):
     return tg(token, "answerCallbackQuery",
               {"callback_query_id": cb_id, "text": text, "show_alert": alert}, timeout=5)
 
-# ── PHONE HELPER ──────────────────────────────────────────────────
 def clean_phone(phone):
     d = (phone or "").replace("-", "").replace(" ", "").replace("+", "")
     if d.startswith("972"):
         return d
     return "972" + d.lstrip("0")
 
-# ── GUMLOOP HELPER ────────────────────────────────────────────────
+# GUMLOOP
 def trigger_gumloop(action, message="", user_id=""):
     payload = {
         "user_id":       GUMLOOP_USER_ID,
@@ -123,22 +121,23 @@ def trigger_gumloop(action, message="", user_id=""):
         logging.error("[gumloop] error: %s", e)
         return {}
 
-# ── TASKS KEYBOARD ────────────────────────────────────────────────
+# TASKS KEYBOARD
 def tasks_keyboard():
     return [
         [
-            {"text": "✅ הוסף למשימות", "callback_data": "task_add"},
-            {"text": "❌ לא תודה",       "callback_data": "task_dismiss"},
+            {"text": "âœ… ×”×•×¡×£ ×œ×ž×©×™×ž×•×ª", "callback_data": "task_add"},
+            {"text": "âŒ ×œ× ×ª×•×“×”",       "callback_data": "task_dismiss"},
         ],
         [
-            {"text": "🚀 שפר ביצוע",        "callback_data": "task_improve"},
-            {"text": "⏰ תזכיר לי מאוחר", "callback_data": "task_remind"},
+            {"text": "ðŸš€ ×©×¤×¨ ×‘×™×¦×•×¢",        "callback_data": "task_improve"},
+            {"text": "â° ×ª×–×›×™×¨ ×œ×™ ×ž××•×—×¨", "callback_data": "task_remind"},
         ],
     ]
 
-# ══════════════════════════════════════════════════════════════════
-#  TASKS BOT — @Matan_klik_Architectbot
-# ══════════════════════════════════════════════════════════════════
+# =========================================================
+# TASKS BOT - @Matan_klik_Architectbot
+# webhook: /webhook/tasks
+# =========================================================
 
 @app.route("/webhook/tasks", methods=["POST"])
 def tasks_webhook():
@@ -154,31 +153,31 @@ def tasks_webhook():
             msg_id  = msg.get("message_id")
             chat_id = msg.get("chat", {}).get("id")
             user_id = cb.get("from", {}).get("id", "")
-            name    = cb.get("from", {}).get("first_name", "משתמש")
+            name    = cb.get("from", {}).get("first_name", "×ž×©×ª×ž×©")
 
             tg_answer(TASKS_TOKEN, cb_id)
 
             if cb_data == "task_add":
                 user_state[user_id] = "awaiting_task"
                 tg_edit(TASKS_TOKEN, chat_id, msg_id,
-                        "✍️ מה המשימה? כתוב לי אותה:")
+                        "âœï¸ ×ž×” ×”×ž×©×™×ž×”? ×›×ª×•×‘ ×œ×™ ××•×ª×”:")
 
             elif cb_data == "task_dismiss":
                 trigger_gumloop("dismiss", user_id=user_id)
                 tg_edit(TASKS_TOKEN, chat_id, msg_id,
-                        "בסדר! 😊 כשתצטרך — אני כאן.",
+                        "×‘×¡×“×¨! ðŸ˜Š ×›×©×ª×¦×˜×¨×š - ×× ×™ ×›××Ÿ.",
                         tasks_keyboard())
 
             elif cb_data == "task_improve":
                 trigger_gumloop("improve", user_id=user_id)
                 tg_edit(TASKS_TOKEN, chat_id, msg_id,
-                        "🔥 " + name + ", הגיע הזמן להתקדם!\n\nבחר משימה אחת קטנה — ועשה אותה עכשיו. 💪",
+                        "ðŸ”¥ " + name + ", ×”×’×™×¢ ×”×–×ž×Ÿ ×œ×”×ª×§×“×!\n\n×‘×—×¨ ×ž×©×™×ž×” ××—×ª ×§×˜× ×” ×•×¢×©×” ××•×ª×” ×¢×›×©×™×•. ðŸ’ª",
                         tasks_keyboard())
 
             elif cb_data == "task_remind":
                 user_state[user_id] = "awaiting_remind_time"
                 tg_edit(TASKS_TOKEN, chat_id, msg_id,
-                        "⏰ בעוד כמה זמן תרצה תזכורת?\nלדוגמא: <b>30 דקות</b>, <b>שעה</b>, <b>מחר בבוקר</b>")
+                        "â° ×‘×¢×•×“ ×›×ž×” ×–×ž×Ÿ ×ª×¨×¦×” ×ª×–×›×•×¨×ª?\n×œ×“×•×’×ž×: 30 ×“×§×•×ª, ×©×¢×”, ×ž×—×¨ ×‘×‘×•×§×¨")
 
             return jsonify({"ok": True}), 200
 
@@ -187,31 +186,31 @@ def tasks_webhook():
             text    = (msg.get("text") or "").strip()
             chat_id = msg.get("chat", {}).get("id")
             user_id = msg.get("from", {}).get("id", "")
-            name    = msg.get("from", {}).get("first_name", "משתמש")
+            name    = msg.get("from", {}).get("first_name", "×ž×©×ª×ž×©")
             state   = user_state.get(user_id)
 
             if text.startswith("/start"):
                 tg_send(TASKS_TOKEN, chat_id,
-                        "היי " + name + "! 👋 מה נעשה?",
+                        "×”×™×™ " + name + "! ðŸ‘‹ ×ž×” × ×¢×©×”?",
                         tasks_keyboard())
 
             elif state == "awaiting_task":
                 del user_state[user_id]
                 trigger_gumloop("add_task", message=text, user_id=user_id)
                 tg_send(TASKS_TOKEN, chat_id,
-                        "✅ המשימה נוספה!\n📝 <b>" + text + "</b>",
+                        "âœ… ×”×ž×©×™×ž×” × ×•×¡×¤×”!\nðŸ“ <b>" + text + "</b>",
                         tasks_keyboard())
 
             elif state == "awaiting_remind_time":
                 del user_state[user_id]
                 trigger_gumloop("remind_later", message=text, user_id=user_id)
                 tg_send(TASKS_TOKEN, chat_id,
-                        "⏰ אזכיר לך בעוד " + text + " ✔️",
+                        "â° ××–×›×™×¨ ×œ×š ×‘×¢×•×“ " + text + " âœ”ï¸",
                         tasks_keyboard())
 
             else:
                 tg_send(TASKS_TOKEN, chat_id,
-                        "מה תרצה לעשות? 👇",
+                        "×ž×” ×ª×¨×¦×” ×œ×¢×©×•×ª? ðŸ‘‡",
                         tasks_keyboard())
 
         return jsonify({"ok": True}), 200
@@ -221,25 +220,25 @@ def tasks_webhook():
         return jsonify({"ok": True, "error": str(e)}), 200
 
 
-# ══════════════════════════════════════════════════════════════════
-#  LOVABLE BOT
-# ══════════════════════════════════════════════════════════════════
+# =========================================================
+# LOVABLE BOT
+# =========================================================
 
 def lovable_keyboard(rid):
     return [
-        [{"text": "✅ אשר", "callback_data": "approve:" + rid},
-         {"text": "❌ דחה", "callback_data": "reject:"  + rid}],
-        [{"text": "✨ שפר פרומפט", "callback_data": "improve_prompt:" + rid},
-         {"text": "📊 סטטוס",      "callback_data": "status:" + rid}],
-        [{"text": "🚀 שלח ל-Lovable", "callback_data": "send_to_lovable:" + rid},
-         {"text": "🔗 פתח Lovable",   "url": LOVABLE_URL}],
+        [{"text": "âœ… ××©×¨", "callback_data": "approve:" + rid},
+         {"text": "âŒ ×“×—×”", "callback_data": "reject:"  + rid}],
+        [{"text": "âœ¨ ×©×¤×¨ ×¤×¨×•×ž×¤×˜", "callback_data": "improve_prompt:" + rid},
+         {"text": "ðŸ“Š ×¡×˜×˜×•×¡",      "callback_data": "status:" + rid}],
+        [{"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "callback_data": "send_to_lovable:" + rid},
+         {"text": "ðŸ”— ×¤×ª×— Lovable",   "url": LOVABLE_URL}],
     ]
 
 def lovable_small_kb(rid):
     return [
-        [{"text": "🚀 שלח ל-Lovable", "callback_data": "send_to_lovable:" + rid},
-         {"text": "📊 סטטוס",         "callback_data": "status:" + rid}],
-        [{"text": "🔗 Lovable", "url": LOVABLE_URL}],
+        [{"text": "ðŸš€ ×©×œ×— ×œ-Lovable", "callback_data": "send_to_lovable:" + rid},
+         {"text": "ðŸ“Š ×¡×˜×˜×•×¡",         "callback_data": "status:" + rid}],
+        [{"text": "ðŸ”— Lovable", "url": LOVABLE_URL}],
     ]
 
 def build_lovable_prompt(data):
@@ -247,27 +246,25 @@ def build_lovable_prompt(data):
     priority = data.get("priority")     or NA
     req_by   = data.get("requested_by") or NA
     details  = data.get("details")      or NA
-    pe       = PRIORITY_ICON.get(priority, "🟣")
-    return "\n".join([
-        "✨ <b>פרומפט פרמיום ל-Lovable</b>", "",
-        "<b>1️⃣ מטרה</b>",
-        "להטמיע את הפיצ׳ר: <b>" + feature + "</b>", "",
-        "<b>2️⃣ הבעיה</b>", details, "",
-        "<b>3️⃣ מה צריך לשנות</b>",
-        "• עדכן את ה-UI אם נדרש",
-        "• עדכן לוגיקה עסקית בלבד",
-        "• אפס שינויים שלא קשורים", "",
-        "<b>4️⃣ דרישות</b>",
-        "• פיצ׳ר: " + feature,
-        "• עדיפות: " + pe + " " + priority,
-        "• מבקש: " + req_by,
-        "• פירוט: " + details, "",
-        "<b>5️⃣ מגבלות</b>",
-        "• לא לשנות קוד שלא קשור",
-        "• לא לשבור פיצ׳רים קיימים", "",
-        "<b>6️⃣ תוצאה רצויה</b>",
-        "הפיצ׳ר \"" + feature + "\" עובד במלואו ובצורה יציבה.",
-    ])
+    pe       = PRIORITY_ICON.get(priority, "ðŸŸ£")
+    lines = [
+        "âœ¨ <b>×¤×¨×•×ž×¤×˜ ×¤×¨×ž×™×•× ×œ-Lovable</b>", "",
+        "<b>1. ×ž×˜×¨×”</b>",
+        "×œ×”×˜×ž×™×¢ ××ª ×”×¤×™×¦'×¨: <b>" + feature + "</b>", "",
+        "<b>2. ×”×‘×¢×™×”</b>", details, "",
+        "<b>3. ×ž×” ×¦×¨×™×š ×œ×©× ×•×ª</b>",
+        "- ×¢×“×›×Ÿ ××ª ×”-UI ×× × ×“×¨×©",
+        "- ×¢×“×›×Ÿ ×œ×•×’×™×§×” ×¢×¡×§×™×ª ×‘×œ×‘×“",
+        "- ××¤×¡ ×©×™× ×•×™×™× ×©×œ× ×§×©×•×¨×™×", "",
+        "<b>4. ×“×¨×™×©×•×ª</b>",
+        "- ×¤×™×¦'×¨: " + feature,
+        "- ×¢×“×™×¤×•×ª: " + pe + " " + priority,
+        "- ×ž×‘×§×©: " + req_by,
+        "- ×¤×™×¨×•×˜: " + details, "",
+        "<b>5. ×ª×•×¦××” ×¨×¦×•×™×”</b>",
+        '×”×¤×™×¦\'×¨ "' + feature + '" ×¢×•×‘×“ ×‘×ž×œ×•××• ×•×‘×¦×•×¨×” ×™×¦×™×‘×”.',
+    ]
+    return "\n".join(lines)
 
 @app.route("/webhook/lovable", methods=["POST"])
 def lovable_webhook():
@@ -285,10 +282,10 @@ def lovable_webhook():
         priority = data.get("priority")     or NA
         req_by   = data.get("requested_by") or NA
         details  = data.get("details")      or NA
-        pe       = PRIORITY_ICON.get(priority, "🟣")
-        text = ("🟣 <b>בקשה חדשה ב-Lovable!</b>\n"
-                "🪄 " + feature + "\n" + pe + " " + priority + "\n"
-                "👤 " + req_by + "\n📝 " + details + "\n🔑 ID: " + rid)
+        pe       = PRIORITY_ICON.get(priority, "ðŸŸ£")
+        text = ("ðŸŸ£ <b>×‘×§×©×” ×—×“×©×” ×‘-Lovable!</b>\n"
+                "ðŸª„ " + feature + "\n" + pe + " " + priority + "\n"
+                "ðŸ‘¤ " + req_by + "\nðŸ“ " + details + "\nðŸ”‘ ID: " + rid)
         res = tg_send(LOVABLE_TOKEN, CHAT_ID, text, lovable_keyboard(rid))
         return jsonify({"status": "ok", "request_id": rid, "telegram_ok": res.get("ok")}), 200
     except Exception as e:
@@ -306,52 +303,52 @@ def lovable_callback():
         msg_id  = msg.get("message_id")
         chat_id = msg.get("chat", {}).get("id", CHAT_ID)
         if not cb_data or ":" not in cb_data:
-            tg_answer(LOVABLE_TOKEN, cb_id, "אין נתון", True)
+            tg_answer(LOVABLE_TOKEN, cb_id, "××™×Ÿ × ×ª×•×Ÿ", True)
             return jsonify({"ok": True}), 200
         action, rid = cb_data.split(":", 1)
         store = request_store.get(rid.strip())
         now   = time.time()
         if action == "improve_prompt":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID ×œ× × ×ž×¦×", True)
                 return jsonify({"ok": True}), 200
             prompt = build_lovable_prompt(store["data"])
             store.update({"improved_prompt": prompt, "status": "improved", "updated_at": now})
             save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "פרומפט שופר!")
+            tg_answer(LOVABLE_TOKEN, cb_id, "×¤×¨×•×ž×¤×˜ ×©×•×¤×¨!")
             tg_edit(LOVABLE_TOKEN, chat_id, msg_id, prompt, lovable_small_kb(rid))
         elif action == "send_to_lovable":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID ×œ× × ×ž×¦×", True)
                 return jsonify({"ok": True}), 200
             prompt  = store.get("improved_prompt") or build_lovable_prompt(store["data"])
             feature = store["data"].get("feature") or NA
             store.update({"status": "sent", "updated_at": now})
             save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "נשלח!")
+            tg_answer(LOVABLE_TOKEN, cb_id, "× ×©×œ×—!")
             tg_send(LOVABLE_TOKEN, chat_id,
-                    "🚀 <b>שליחה ל-Lovable</b>\n🔑 " + rid + "\n🪄 " + feature + "\n\n" + prompt,
-                    [[{"text": "🔗 פתח Lovable", "url": LOVABLE_URL}],
-                     [{"text": "📊 סטטוס", "callback_data": "status:" + rid}]])
+                    "ðŸš€ <b>×©×œ×™×—×” ×œ-Lovable</b>\nðŸ”‘ " + rid + "\nðŸª„ " + feature + "\n\n" + prompt,
+                    [[{"text": "ðŸ”— ×¤×ª×— Lovable", "url": LOVABLE_URL}],
+                     [{"text": "ðŸ“Š ×¡×˜×˜×•×¡", "callback_data": "status:" + rid}]])
         elif action == "status":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID ×œ× × ×ž×¦×", True)
                 return jsonify({"ok": True}), 200
             feature = store["data"].get("feature") or NA
-            tg_answer(LOVABLE_TOKEN, cb_id, "סטטוס טעון")
+            tg_answer(LOVABLE_TOKEN, cb_id, "×¡×˜×˜×•×¡ ×˜×¢×•×Ÿ")
             tg_send(LOVABLE_TOKEN, chat_id,
-                    "📊 <b>סטטוס</b>\n🔑 " + rid + "\n🪄 " + feature +
-                    "\n📌 מצב: " + store.get("status","unknown") +
-                    "\n✨ פרומפט: " + ("✅ כן" if store.get("improved_prompt") else "❌ טרם"),
+                    "ðŸ“Š <b>×¡×˜×˜×•×¡</b>\nðŸ”‘ " + rid + "\nðŸª„ " + feature +
+                    "\nðŸ“Œ ×ž×¦×‘: " + store.get("status", "unknown") +
+                    "\nâœ¨ ×¤×¨×•×ž×¤×˜: " + ("âœ… ×›×Ÿ" if store.get("improved_prompt") else "âŒ ×˜×¨×"),
                     lovable_small_kb(rid))
         elif action == "approve":
             if store: store.update({"status": "approved", "updated_at": now}); save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "אושר!")
-            tg_send(LOVABLE_TOKEN, chat_id, "✅ בקשה " + rid + " אושרה!")
+            tg_answer(LOVABLE_TOKEN, cb_id, "××•×©×¨!")
+            tg_send(LOVABLE_TOKEN, chat_id, "âœ… ×‘×§×©×” " + rid + " ××•×©×¨×”!")
         elif action == "reject":
             if store: store.update({"status": "rejected", "updated_at": now}); save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "נדחה")
-            tg_send(LOVABLE_TOKEN, chat_id, "❌ בקשה " + rid + " נדחתה.")
+            tg_answer(LOVABLE_TOKEN, cb_id, "× ×“×—×”")
+            tg_send(LOVABLE_TOKEN, chat_id, "âŒ ×‘×§×©×” " + rid + " × ×“×—×ª×”.")
         else:
             tg_answer(LOVABLE_TOKEN, cb_id)
         return jsonify({"ok": True}), 200
@@ -360,26 +357,26 @@ def lovable_callback():
         return jsonify({"ok": True, "error": str(e)}), 200
 
 
-# ══════════════════════════════════════════════════════════════════
-#  LEADS BOT
-# ══════════════════════════════════════════════════════════════════
+# =========================================================
+# LEADS BOT
+# =========================================================
 
 def leads_keyboard(rid, phone=""):
     phone_clean = clean_phone(phone) if phone else ""
     kb = []
     if phone_clean:
         kb.append([
-            {"text": "📞 התקשר עכשיו",
-             "url": "https://wa.me/" + phone_clean + "?text=שלום, אני מצוות קליק"},
-            {"text": "💬 WhatsApp", "url": "https://wa.me/" + phone_clean},
+            {"text": "ðŸ“ž ×”×ª×§×©×¨ ×¢×›×©×™×•",
+             "url": "https://wa.me/" + phone_clean + "?text=×©×œ×•×, ×× ×™ ×ž×¦×•×•×ª ×§×œ×™×§"},
+            {"text": "ðŸ’¬ WhatsApp", "url": "https://wa.me/" + phone_clean},
         ])
     kb.append([
-        {"text": "✅ פתוח", "callback_data": "lead_open:"    + rid},
-        {"text": "❌ סגור", "callback_data": "lead_close:"   + rid},
+        {"text": "âœ… ×¤×ª×•×—", "callback_data": "lead_open:"    + rid},
+        {"text": "âŒ ×¡×’×•×¨", "callback_data": "lead_close:"   + rid},
     ])
     kb.append([
-        {"text": "⏰ תזכורת 2ש", "callback_data": "lead_snooze:"  + rid},
-        {"text": "✨ שפר פרומפט", "callback_data": "lead_improve:" + rid},
+        {"text": "â° ×ª×–×›×•×¨×ª 2×©", "callback_data": "lead_snooze:"  + rid},
+        {"text": "âœ¨ ×©×¤×¨ ×¤×¨×•×ž×¤×˜", "callback_data": "lead_improve:" + rid},
     ])
     return kb
 
@@ -388,20 +385,21 @@ def build_lead_prompt(data):
     service     = data.get("service")     or NA
     location    = data.get("location")    or NA
     description = data.get("description") or NA
-    return "\n".join([
-        "✨ <b>פרומפט פרמיום ל-Lovable</b>", "",
-        "<b>1️⃣ מטרה</b>",
-        "לשפר את דף <b>" + service + "</b> מאזור " + location + ".", "",
-        "<b>2️⃣ הקשר</b>",
-        "ליד: " + name + " מ" + location + " ביקש " + service + ".",
-        "צורך: " + description, "",
-        "<b>3️⃣ מה לשפר</b>",
-        "• דף שירות " + service + " עם תמונות",
-        "• CTA לוואטסאפ/טלפון",
-        "• טופס ביצוע מהיר", "",
-        "<b>4️⃣ תוצאה רצויה</b>",
-        "דף " + service + " ב" + location + " ממיר לידים.",
-    ])
+    lines = [
+        "âœ¨ <b>×¤×¨×•×ž×¤×˜ ×¤×¨×ž×™×•× ×œ-Lovable</b>", "",
+        "<b>1. ×ž×˜×¨×”</b>",
+        "×œ×©×¤×¨ ××ª ×“×£ <b>" + service + "</b> ×ž××–×•×¨ " + location + ".", "",
+        "<b>2. ×”×§×©×¨</b>",
+        "×œ×™×“: " + name + " ×ž" + location + " ×‘×™×§×© " + service + ".",
+        "×¦×•×¨×š: " + description, "",
+        "<b>3. ×ž×” ×œ×©×¤×¨</b>",
+        "- ×“×£ ×©×™×¨×•×ª " + service + " ×¢× ×ª×ž×•× ×•×ª",
+        "- CTA ×œ×•×•××˜×¡××¤/×˜×œ×¤×•×Ÿ",
+        "- ×˜×•×¤×¡ ×‘×™×¦×•×¢ ×ž×”×™×¨", "",
+        "<b>4. ×ª×•×¦××” ×¨×¦×•×™×”</b>",
+        "×“×£ " + service + " ×‘" + location + " ×ž×ž×™×¨ ×œ×™×“×™×.",
+    ]
+    return "\n".join(lines)
 
 @app.route("/webhook/leads", methods=["POST"])
 def leads_webhook():
@@ -420,10 +418,10 @@ def leads_webhook():
         service  = data.get("service")     or NA
         location = data.get("location")    or NA
         desc     = data.get("description") or NA
-        text = ("🔥 <b>ליד חדש!</b>\n👤 " + name + "\n🔧 " + service +
-                "\n📍 " + location + "\n" +
-                ("📞 " + phone + "\n" if phone else "") +
-                "📝 " + desc + "\n🔑 ID: " + rid)
+        text = ("ðŸ”¥ <b>×œ×™×“ ×—×“×©!</b>\nðŸ‘¤ " + name + "\nðŸ”§ " + service +
+                "\nðŸ“ " + location + "\n" +
+                ("ðŸ“ž " + phone + "\n" if phone else "") +
+                "ðŸ“ " + desc + "\nðŸ”‘ ID: " + rid)
         res = tg_send(LEADS_TOKEN, CHAT_ID, text, leads_keyboard(rid, phone))
         return jsonify({"status": "ok", "request_id": rid, "telegram_ok": res.get("ok")}), 200
     except Exception as e:
@@ -440,33 +438,33 @@ def leads_callback():
         msg     = cb.get("message", {})
         chat_id = msg.get("chat", {}).get("id", CHAT_ID)
         if not cb_data or ":" not in cb_data:
-            tg_answer(LEADS_TOKEN, cb_id, "אין נתון", True)
+            tg_answer(LEADS_TOKEN, cb_id, "××™×Ÿ × ×ª×•×Ÿ", True)
             return jsonify({"ok": True}), 200
         action, rid = cb_data.split(":", 1)
         store = request_store.get(rid.strip())
         now   = time.time()
         if action == "lead_open":
             if store: store.update({"status": "open", "updated_at": now}); save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "ליד פתוח")
-            tg_send(LEADS_TOKEN, chat_id, "✅ ליד " + rid + " סומן כפתוח!")
+            tg_answer(LEADS_TOKEN, cb_id, "×œ×™×“ ×¤×ª×•×—")
+            tg_send(LEADS_TOKEN, chat_id, "âœ… ×œ×™×“ " + rid + " ×¡×•×ž×Ÿ ×›×¤×ª×•×—!")
         elif action == "lead_close":
             if store: store.update({"status": "closed", "updated_at": now}); save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "ליד נסגר")
-            tg_send(LEADS_TOKEN, chat_id, "❌ ליד " + rid + " נסגר.")
+            tg_answer(LEADS_TOKEN, cb_id, "×œ×™×“ × ×¡×’×¨")
+            tg_send(LEADS_TOKEN, chat_id, "âŒ ×œ×™×“ " + rid + " × ×¡×’×¨.")
         elif action == "lead_snooze":
             if store: store.update({"status": "snoozed", "updated_at": now}); save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "תזכורת 2ש נקבעה")
-            tg_send(LEADS_TOKEN, chat_id, "⏰ תזכורת לליד " + rid + " ל-2 שעות.")
+            tg_answer(LEADS_TOKEN, cb_id, "×ª×–×›×•×¨×ª 2×© × ×§×‘×¢×”")
+            tg_send(LEADS_TOKEN, chat_id, "â° ×ª×–×›×•×¨×ª ×œ×œ×™×“ " + rid + " ×œ-2 ×©×¢×•×ª.")
         elif action == "lead_improve":
             if not store:
-                tg_answer(LEADS_TOKEN, cb_id, "RID לא נמצא", True)
+                tg_answer(LEADS_TOKEN, cb_id, "RID ×œ× × ×ž×¦×", True)
                 return jsonify({"ok": True}), 200
             prompt = build_lead_prompt(store["data"])
             store.update({"lead_prompt": prompt, "status": "prompt_ready", "updated_at": now})
             save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "פרומפט מוכן!")
+            tg_answer(LEADS_TOKEN, cb_id, "×¤×¨×•×ž×¤×˜ ×ž×•×›×Ÿ!")
             tg_send(LEADS_TOKEN, chat_id, prompt,
-                    [[{"text": "🔗 פתח Lovable", "url": LOVABLE_URL}]])
+                    [[{"text": "ðŸ”— ×¤×ª×— Lovable", "url": LOVABLE_URL}]])
         else:
             tg_answer(LEADS_TOKEN, cb_id)
         return jsonify({"ok": True}), 200
@@ -475,7 +473,7 @@ def leads_callback():
         return jsonify({"ok": True, "error": str(e)}), 200
 
 
-# ── HEALTH ────────────────────────────────────────────────────────
+# HEALTH
 @app.route("/", methods=["GET"])
 def home():
     return jsonify({"ok": True, "message": "klik_agent v5.0 running"}), 200
@@ -490,10 +488,10 @@ def health():
         "requests":      len(request_store),
     }), 200
 
-# ── START ─────────────────────────────────────────────────────────
+# START
 load_store()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    print("klik_agent v5.0 — port " + str(port))
+    print("klik_agent v5.0 - port " + str(port))
     app.run(host="0.0.0.0", port=port, debug=False)
