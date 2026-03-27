@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-klik_agent v4.0 — Lovable Bot + Leads Bot
-Bots: @klik_lovable_bot | @klik_leads_bot
+klik_agent v5.0 — Lovable Bot + Leads Bot + Tasks Bot
+Bots: @klik_lovable_bot | @klik_leads_bot | @Matan_klik_Architectbot
 """
 from flask import Flask, request, jsonify
 import requests, logging, os, time, json
@@ -12,20 +12,28 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(mess
 # ── ENV ──────────────────────────────────────────────────────────
 LOVABLE_TOKEN = os.environ.get("BOT_TOKEN",        "").strip()
 LEADS_TOKEN   = os.environ.get("LEADS_BOT_TOKEN",  "").strip()
+TASKS_TOKEN   = os.environ.get("TASKS_BOT_TOKEN",  "8749435051:AAGQh4udNta3qJzeZta5N5dMfcuUqvJqEDQ").strip()
 CHAT_ID       = int(os.environ.get("CHAT_ID",       "326460077"))
 LOVABLE_URL   = os.environ.get("LOVABLE_URL",
     "https://lovable.dev/projects/a6749f8e-90a0-4d01-a509-5bd0d173f325").strip()
 
+# ── GUMLOOP ───────────────────────────────────────────────────────
+GUMLOOP_API_KEY  = "f68e93c16aad4774aa204e7b19fb6aa9"
+GUMLOOP_USER_ID  = "3IeYf3BuDTSBYlmFOlgIGBiDOLs2"
+GUMLOOP_PIPELINE = "mi7pWhLDxKFDFqYii16B2v"
+GUMLOOP_URL_API  = "https://api.gumloop.com/api/v1/start_pipeline"
+
 # ── CONST ─────────────────────────────────────────────────────────
-NA   = "\u05dc\u05d0 \u05e6\u05d5\u05d9\u05df"
-HIGH = "\u05d2\u05d1\u05d5\u05d4\u05d4"
-MED  = "\u05d1\u05d9\u05e0\u05d5\u05e0\u05d9\u05ea"
-LOW  = "\u05e0\u05de\u05d5\u05db\u05d4"
-PRIORITY_ICON = {HIGH: "\ud83d\udd34", MED: "\ud83d\udfe1", LOW: "\ud83d\udfe2"}
+NA   = "לא צוין"
+HIGH = "גבוהה"
+MED  = "בינונית"
+LOW  = "נמוכה"
+PRIORITY_ICON = {HIGH: "🔴", MED: "🟡", LOW: "🟢"}
 
 # ── STORE ─────────────────────────────────────────────────────────
 STORE_FILE = "request_store.json"
 request_store = {}
+user_state = {}
 
 def load_store():
     global request_store
@@ -41,7 +49,7 @@ def load_store():
 def save_store():
     try:
         with open(STORE_FILE, "w", encoding="utf-8") as f:
-            json.dump(request_store, f, ensure_ascii=True, indent=2)
+            json.dump(request_store, f, ensure_ascii=False, indent=2)
     except Exception as e:
         logging.error("[store] save error: %s", e)
 
@@ -90,73 +98,176 @@ def clean_phone(phone):
         return d
     return "972" + d.lstrip("0")
 
+# ── GUMLOOP HELPER ────────────────────────────────────────────────
+def trigger_gumloop(action, message="", user_id=""):
+    payload = {
+        "user_id":       GUMLOOP_USER_ID,
+        "saved_item_id": GUMLOOP_PIPELINE,
+        "pipeline_inputs": [
+            {"input_name": "action",  "value": action},
+            {"input_name": "message", "value": message},
+            {"input_name": "user_id", "value": str(user_id)},
+        ],
+    }
+    try:
+        r = requests.post(
+            GUMLOOP_URL_API,
+            params={"api_key": GUMLOOP_API_KEY},
+            json=payload,
+            timeout=10,
+        )
+        res = r.json()
+        logging.info("[gumloop] action=%s run_id=%s", action, res.get("run_id"))
+        return res
+    except Exception as e:
+        logging.error("[gumloop] error: %s", e)
+        return {}
+
+# ── TASKS KEYBOARD ────────────────────────────────────────────────
+def tasks_keyboard():
+    return [
+        [
+            {"text": "✅ הוסף למשימות", "callback_data": "task_add"},
+            {"text": "❌ לא תודה",       "callback_data": "task_dismiss"},
+        ],
+        [
+            {"text": "🚀 שפר ביצוע",        "callback_data": "task_improve"},
+            {"text": "⏰ תזכיר לי מאוחר", "callback_data": "task_remind"},
+        ],
+    ]
+
 # ══════════════════════════════════════════════════════════════════
-#  LOVABLE BOT — premium Lovable request flow
+#  TASKS BOT — @Matan_klik_Architectbot
+# ══════════════════════════════════════════════════════════════════
+
+@app.route("/webhook/tasks", methods=["POST"])
+def tasks_webhook():
+    try:
+        upd = request.get_json(silent=True) or {}
+        logging.info("[tasks] update: %s", str(upd)[:300])
+
+        if "callback_query" in upd:
+            cb      = upd["callback_query"]
+            cb_id   = cb.get("id", "")
+            cb_data = (cb.get("data") or "").strip()
+            msg     = cb.get("message", {})
+            msg_id  = msg.get("message_id")
+            chat_id = msg.get("chat", {}).get("id")
+            user_id = cb.get("from", {}).get("id", "")
+            name    = cb.get("from", {}).get("first_name", "משתמש")
+
+            tg_answer(TASKS_TOKEN, cb_id)
+
+            if cb_data == "task_add":
+                user_state[user_id] = "awaiting_task"
+                tg_edit(TASKS_TOKEN, chat_id, msg_id,
+                        "✍️ מה המשימה? כתוב לי אותה:")
+
+            elif cb_data == "task_dismiss":
+                trigger_gumloop("dismiss", user_id=user_id)
+                tg_edit(TASKS_TOKEN, chat_id, msg_id,
+                        "בסדר! 😊 כשתצטרך — אני כאן.",
+                        tasks_keyboard())
+
+            elif cb_data == "task_improve":
+                trigger_gumloop("improve", user_id=user_id)
+                tg_edit(TASKS_TOKEN, chat_id, msg_id,
+                        "🔥 " + name + ", הגיע הזמן להתקדם!\n\nבחר משימה אחת קטנה — ועשה אותה עכשיו. 💪",
+                        tasks_keyboard())
+
+            elif cb_data == "task_remind":
+                user_state[user_id] = "awaiting_remind_time"
+                tg_edit(TASKS_TOKEN, chat_id, msg_id,
+                        "⏰ בעוד כמה זמן תרצה תזכורת?\nלדוגמא: <b>30 דקות</b>, <b>שעה</b>, <b>מחר בבוקר</b>")
+
+            return jsonify({"ok": True}), 200
+
+        if "message" in upd:
+            msg     = upd["message"]
+            text    = (msg.get("text") or "").strip()
+            chat_id = msg.get("chat", {}).get("id")
+            user_id = msg.get("from", {}).get("id", "")
+            name    = msg.get("from", {}).get("first_name", "משתמש")
+            state   = user_state.get(user_id)
+
+            if text.startswith("/start"):
+                tg_send(TASKS_TOKEN, chat_id,
+                        "היי " + name + "! 👋 מה נעשה?",
+                        tasks_keyboard())
+
+            elif state == "awaiting_task":
+                del user_state[user_id]
+                trigger_gumloop("add_task", message=text, user_id=user_id)
+                tg_send(TASKS_TOKEN, chat_id,
+                        "✅ המשימה נוספה!\n📝 <b>" + text + "</b>",
+                        tasks_keyboard())
+
+            elif state == "awaiting_remind_time":
+                del user_state[user_id]
+                trigger_gumloop("remind_later", message=text, user_id=user_id)
+                tg_send(TASKS_TOKEN, chat_id,
+                        "⏰ אזכיר לך בעוד " + text + " ✔️",
+                        tasks_keyboard())
+
+            else:
+                tg_send(TASKS_TOKEN, chat_id,
+                        "מה תרצה לעשות? 👇",
+                        tasks_keyboard())
+
+        return jsonify({"ok": True}), 200
+
+    except Exception as e:
+        logging.exception("[tasks] exception")
+        return jsonify({"ok": True, "error": str(e)}), 200
+
+
+# ══════════════════════════════════════════════════════════════════
+#  LOVABLE BOT
 # ══════════════════════════════════════════════════════════════════
 
 def lovable_keyboard(rid):
     return [
-        [{"text": "\u2705 \u05d0\u05e9\u05e8",  "callback_data": "approve:" + rid},
-         {"text": "\u274c \u05d3\u05d7\u05d4",   "callback_data": "reject:"  + rid}],
-        [{"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8",
-          "callback_data": "improve_prompt:" + rid},
-         {"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1",
-          "callback_data": "status:" + rid}],
-        [{"text": "\ud83d\ude80 \u05e9\u05dc\u05d7 \u05dc-Lovable",
-          "callback_data": "send_to_lovable:" + rid},
-         {"text": "\ud83d\udd17 \u05e4\u05ea\u05d7 Lovable", "url": LOVABLE_URL}],
+        [{"text": "✅ אשר", "callback_data": "approve:" + rid},
+         {"text": "❌ דחה", "callback_data": "reject:"  + rid}],
+        [{"text": "✨ שפר פרומפט", "callback_data": "improve_prompt:" + rid},
+         {"text": "📊 סטטוס",      "callback_data": "status:" + rid}],
+        [{"text": "🚀 שלח ל-Lovable", "callback_data": "send_to_lovable:" + rid},
+         {"text": "🔗 פתח Lovable",   "url": LOVABLE_URL}],
     ]
 
 def lovable_small_kb(rid):
     return [
-        [{"text": "\ud83d\ude80 \u05e9\u05dc\u05d7 \u05dc-Lovable",
-          "callback_data": "send_to_lovable:" + rid},
-         {"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1",
-          "callback_data": "status:" + rid}],
-        [{"text": "\ud83d\udd17 Lovable", "url": LOVABLE_URL}],
+        [{"text": "🚀 שלח ל-Lovable", "callback_data": "send_to_lovable:" + rid},
+         {"text": "📊 סטטוס",         "callback_data": "status:" + rid}],
+        [{"text": "🔗 Lovable", "url": LOVABLE_URL}],
     ]
 
-
 def build_lovable_prompt(data):
-    """Premium 6-section Lovable prompt."""
     feature  = data.get("feature")      or NA
     priority = data.get("priority")     or NA
     req_by   = data.get("requested_by") or NA
     details  = data.get("details")      or NA
-    pe       = PRIORITY_ICON.get(priority, "\ud83d\udfe3")
+    pe       = PRIORITY_ICON.get(priority, "🟣")
     return "\n".join([
-        "\u2728 <b>\u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05e4\u05e8\u05de\u05d9\u05d5\u05dd \u05dc-Lovable</b>",
-        "",
-        "<b>1\ufe0f\u20e3 \u05de\u05d8\u05e8\u05d4</b>",
-        "\u05dc\u05d4\u05d8\u05de\u05d9\u05e2 \u05d0\u05ea \u05d4\u05e4\u05d9\u05e6\u05f3\u05e8: <b>" + feature + "</b>",
-        "\u05d1\u05e6\u05d5\u05e8\u05d4 \u05de\u05dc\u05d0\u05d4, \u05d9\u05e6\u05d9\u05d1\u05d4 \u05d5\u05e0\u05e7\u05d9\u05d4 \u05dc\u05de\u05e9\u05ea\u05de\u05e9.",
-        "",
-        "<b>2\ufe0f\u20e3 \u05d4\u05d1\u05e2\u05d9\u05d4</b>",
-        details,
-        "",
-        "<b>3\ufe0f\u20e3 \u05de\u05d4 \u05e6\u05e8\u05d9\u05da \u05dc\u05e9\u05e0\u05d5\u05ea</b>",
-        "\u2022 \u05e2\u05d3\u05db\u05df \u05d0\u05ea \u05d4-UI \u05d0\u05dd \u05e0\u05d3\u05e8\u05e9 — \u05dc\u05e9\u05de\u05d5\u05e8 \u05e2\u05dc \u05e7\u05d5\u05d4\u05e8\u05e0\u05d8\u05d9\u05d5\u05ea \u05d5\u05d9\u05d6\u05d5\u05d0\u05dc\u05d9\u05ea",
-        "\u2022 \u05e2\u05d3\u05db\u05df \u05dc\u05d5\u05d2\u05d9\u05e7\u05d4 \u05e2\u05e1\u05e7\u05d9\u05ea \u05d1\u05dc\u05d1\u05d3 \u05d1\u05e0\u05d5\u05d2\u05e2 \u05dc\u05e4\u05d9\u05e6\u05f3\u05e8",
-        "\u2022 \u05e2\u05d3\u05db\u05df State \u05d0\u05dd \u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9 — \u05dc\u05d5\u05d5\u05d3\u05d0 \u05e9\u05d4\u05e0\u05ea\u05d5\u05e0\u05d9\u05dd \u05e0\u05e9\u05de\u05e8\u05d9\u05dd",
-        "\u2022 \u05d0\u05e4\u05e1 \u05e9\u05d9\u05e0\u05d5\u05d9\u05d9\u05dd \u05e9\u05dc\u05d0 \u05e7\u05e9\u05d5\u05e8\u05d9\u05dd \u05dc\u05d1\u05e7\u05e9\u05d4",
-        "",
-        "<b>4\ufe0f\u20e3 \u05d3\u05e8\u05d9\u05e9\u05d5\u05ea \u05de\u05d3\u05d5\u05d9\u05e7\u05d5\u05ea</b>",
-        "\u2022 \u05e4\u05d9\u05e6\u05f3\u05e8: " + feature,
-        "\u2022 \u05e2\u05d3\u05d9\u05e4\u05d5\u05ea: " + pe + " " + priority,
-        "\u2022 \u05de\u05d1\u05e7\u05e9: " + req_by,
-        "\u2022 \u05e4\u05d9\u05e8\u05d5\u05d8: " + details,
-        "",
-        "<b>5\ufe0f\u20e3 \u05de\u05d2\u05d1\u05dc\u05d5\u05ea</b>",
-        "\u2022 \u05dc\u05d0 \u05dc\u05e9\u05e0\u05d5\u05ea \u05e7\u05d5\u05d3 \u05e9\u05dc\u05d0 \u05e7\u05e9\u05d5\u05e8 \u05dc\u05d1\u05e7\u05e9\u05d4 \u05d6\u05d5",
-        "\u2022 \u05dc\u05d0 \u05dc\u05e9\u05d1\u05d5\u05e8 \u05e4\u05d9\u05e6\u05f3\u05e8\u05d9\u05dd \u05e7\u05d9\u05d9\u05de\u05d9\u05dd",
-        "\u2022 \u05d0\u05dd \u05e6\u05e8\u05d9\u05da \u05e9\u05d9\u05e0\u05d5\u05d9 DB \u2014 \u05dc\u05ea\u05d0\u05dd \u05e7\u05d5\u05d3\u05dd \u05d5\u05dc\u05d0 \u05dc\u05e9\u05d1\u05d5\u05e8",
-        "\u2022 \u05dc\u05d0 \u05dc\u05d4\u05d5\u05e1\u05d9\u05e3 \u05d7\u05d1\u05d9\u05dc\u05d5\u05ea \u05dc\u05dc\u05d0 \u05d0\u05d9\u05e9\u05d5\u05e8",
-        "",
-        "<b>6\ufe0f\u20e3 \u05ea\u05d5\u05e6\u05d0\u05d4 \u05e8\u05e6\u05d5\u05d9\u05d4</b>",
-        "\u05d4\u05e4\u05d9\u05e6\u05f3\u05e8 \"" + feature + "\" \u05e2\u05d5\u05d1\u05d3 \u05d1\u05de\u05dc\u05d5\u05d0\u05d5 \u05d5\u05d1\u05e6\u05d5\u05e8\u05d4 \u05d9\u05e6\u05d9\u05d1\u05d4.",
-        "\u05e0\u05d1\u05d3\u05e7 \u05db\u05dc \u05de\u05e7\u05e8\u05d4 \u05e7\u05e6\u05d4 \u05dc\u05e4\u05e0\u05d9 \u05e1\u05d9\u05d5\u05dd.",
+        "✨ <b>פרומפט פרמיום ל-Lovable</b>", "",
+        "<b>1️⃣ מטרה</b>",
+        "להטמיע את הפיצ׳ר: <b>" + feature + "</b>", "",
+        "<b>2️⃣ הבעיה</b>", details, "",
+        "<b>3️⃣ מה צריך לשנות</b>",
+        "• עדכן את ה-UI אם נדרש",
+        "• עדכן לוגיקה עסקית בלבד",
+        "• אפס שינויים שלא קשורים", "",
+        "<b>4️⃣ דרישות</b>",
+        "• פיצ׳ר: " + feature,
+        "• עדיפות: " + pe + " " + priority,
+        "• מבקש: " + req_by,
+        "• פירוט: " + details, "",
+        "<b>5️⃣ מגבלות</b>",
+        "• לא לשנות קוד שלא קשור",
+        "• לא לשבור פיצ׳רים קיימים", "",
+        "<b>6️⃣ תוצאה רצויה</b>",
+        "הפיצ׳ר \"" + feature + "\" עובד במלואו ובצורה יציבה.",
     ])
-
 
 @app.route("/webhook/lovable", methods=["POST"])
 def lovable_webhook():
@@ -164,137 +275,93 @@ def lovable_webhook():
         data = request.get_json(silent=True) or request.form.to_dict()
         if not data:
             return jsonify({"status": "error", "message": "empty"}), 400
-
-        rid  = make_rid(data, "req")
-        now  = time.time()
-        request_store[rid] = {
-            "type": "lovable", "data": data,
-            "improved_prompt": None, "status": "created",
-            "created_at": now, "updated_at": now,
-        }
+        rid = make_rid(data, "req")
+        now = time.time()
+        request_store[rid] = {"type": "lovable", "data": data,
+                               "improved_prompt": None, "status": "created",
+                               "created_at": now, "updated_at": now}
         save_store()
-
         feature  = data.get("feature")      or NA
         priority = data.get("priority")     or NA
         req_by   = data.get("requested_by") or NA
         details  = data.get("details")      or NA
-        pe       = PRIORITY_ICON.get(priority, "\ud83d\udfe3")
-
-        text = (
-            "\ud83d\udfe3 <b>\u05d1\u05e7\u05e9\u05d4 \u05d7\u05d3\u05e9\u05d4 \u05d1-Lovable!</b>\n"
-            + "\ud83e\ude84 " + feature + "\n"
-            + pe + " " + priority + "\n"
-            + "\ud83d\udc64 " + req_by + "\n"
-            + "\ud83d\udcdd " + details + "\n"
-            + "\ud83d\udd11 ID: " + rid
-        )
+        pe       = PRIORITY_ICON.get(priority, "🟣")
+        text = ("🟣 <b>בקשה חדשה ב-Lovable!</b>\n"
+                "🪄 " + feature + "\n" + pe + " " + priority + "\n"
+                "👤 " + req_by + "\n📝 " + details + "\n🔑 ID: " + rid)
         res = tg_send(LOVABLE_TOKEN, CHAT_ID, text, lovable_keyboard(rid))
-        logging.info("[lovable] rid=%s ok=%s", rid, res.get("ok"))
         return jsonify({"status": "ok", "request_id": rid, "telegram_ok": res.get("ok")}), 200
     except Exception as e:
         logging.exception("[lovable] exception")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @app.route("/webhook/callback", methods=["POST"])
 def lovable_callback():
     try:
-        upd    = request.get_json(silent=True) or {}
-        cb     = upd.get("callback_query", {})
-        cb_id  = cb.get("id", "")
-        cb_data= (cb.get("data") or "").strip()
-        msg    = cb.get("message", {})
-        msg_id = msg.get("message_id")
-        chat_id= msg.get("chat", {}).get("id", CHAT_ID)
-
-        logging.info("[lovable_cb] data=%s", cb_data)
+        upd     = request.get_json(silent=True) or {}
+        cb      = upd.get("callback_query", {})
+        cb_id   = cb.get("id", "")
+        cb_data = (cb.get("data") or "").strip()
+        msg     = cb.get("message", {})
+        msg_id  = msg.get("message_id")
+        chat_id = msg.get("chat", {}).get("id", CHAT_ID)
         if not cb_data or ":" not in cb_data:
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05d0\u05d9\u05df \u05e0\u05ea\u05d5\u05df", True)
+            tg_answer(LOVABLE_TOKEN, cb_id, "אין נתון", True)
             return jsonify({"ok": True}), 200
-
         action, rid = cb_data.split(":", 1)
         store = request_store.get(rid.strip())
         now   = time.time()
-
         if action == "improve_prompt":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID \u05dc\u05d0 \u05e0\u05de\u05e6\u05d0", True)
-                return jsonify({"ok": True, "handler": "improve_prompt", "result": "no_rid"}), 200
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
+                return jsonify({"ok": True}), 200
             prompt = build_lovable_prompt(store["data"])
             store.update({"improved_prompt": prompt, "status": "improved", "updated_at": now})
             save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05e9\u05d5\u05e4\u05e8!")
-            result = tg_edit(LOVABLE_TOKEN, chat_id, msg_id, prompt, lovable_small_kb(rid))
-            return jsonify({"ok": True, "handler": "improve_prompt", "rid": rid,
-                            "edit_ok": result.get("ok")}), 200
-
+            tg_answer(LOVABLE_TOKEN, cb_id, "פרומפט שופר!")
+            tg_edit(LOVABLE_TOKEN, chat_id, msg_id, prompt, lovable_small_kb(rid))
         elif action == "send_to_lovable":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID \u05dc\u05d0 \u05e0\u05de\u05e6\u05d0", True)
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
                 return jsonify({"ok": True}), 200
             prompt  = store.get("improved_prompt") or build_lovable_prompt(store["data"])
             feature = store["data"].get("feature") or NA
-            msg_text= (
-                "\ud83d\ude80 <b>\u05e9\u05dc\u05d9\u05d7\u05d4 \u05dc-Lovable</b>\n"
-                + "\ud83d\udd11 ID: " + rid + "\n"
-                + "\ud83e\ude84 " + feature + "\n\n"
-                + prompt
-            )
             store.update({"status": "sent", "updated_at": now})
             save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05e0\u05e9\u05dc\u05d7!")
-            res = tg_send(LOVABLE_TOKEN, chat_id, msg_text, [
-                [{"text": "\ud83d\udd17 \u05e4\u05ea\u05d7 Lovable", "url": LOVABLE_URL}],
-                [{"text": "\ud83d\udcca \u05e1\u05d8\u05d8\u05d5\u05e1", "callback_data": "status:" + rid}],
-            ])
-            return jsonify({"ok": True, "handler": "send_to_lovable", "rid": rid,
-                            "send_ok": res.get("ok")}), 200
-
+            tg_answer(LOVABLE_TOKEN, cb_id, "נשלח!")
+            tg_send(LOVABLE_TOKEN, chat_id,
+                    "🚀 <b>שליחה ל-Lovable</b>\n🔑 " + rid + "\n🪄 " + feature + "\n\n" + prompt,
+                    [[{"text": "🔗 פתח Lovable", "url": LOVABLE_URL}],
+                     [{"text": "📊 סטטוס", "callback_data": "status:" + rid}]])
         elif action == "status":
             if not store:
-                tg_answer(LOVABLE_TOKEN, cb_id, "RID \u05dc\u05d0 \u05e0\u05de\u05e6\u05d0", True)
+                tg_answer(LOVABLE_TOKEN, cb_id, "RID לא נמצא", True)
                 return jsonify({"ok": True}), 200
-            feature  = store["data"].get("feature") or NA
-            status   = store.get("status", "unknown")
-            has_p    = "\u2705 \u05db\u05df" if store.get("improved_prompt") else "\u274c \u05d8\u05e8\u05dd"
-            msg_text = (
-                "\ud83d\udcca <b>\u05e1\u05d8\u05d8\u05d5\u05e1</b>\n"
-                + "\ud83d\udd11 " + rid + "\n"
-                + "\ud83e\ude84 " + feature + "\n"
-                + "\ud83d\udccc \u05de\u05e6\u05d1: " + status + "\n"
-                + "\u2728 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8: " + has_p
-            )
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05e1\u05d8\u05d8\u05d5\u05e1 \u05d8\u05e2\u05d5\u05df")
-            tg_send(LOVABLE_TOKEN, chat_id, msg_text, lovable_small_kb(rid))
-            return jsonify({"ok": True, "handler": "status", "rid": rid}), 200
-
+            feature = store["data"].get("feature") or NA
+            tg_answer(LOVABLE_TOKEN, cb_id, "סטטוס טעון")
+            tg_send(LOVABLE_TOKEN, chat_id,
+                    "📊 <b>סטטוס</b>\n🔑 " + rid + "\n🪄 " + feature +
+                    "\n📌 מצב: " + store.get("status","unknown") +
+                    "\n✨ פרומפט: " + ("✅ כן" if store.get("improved_prompt") else "❌ טרם"),
+                    lovable_small_kb(rid))
         elif action == "approve":
-            if store:
-                store.update({"status": "approved", "updated_at": now})
-                save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05d0\u05d5\u05e9\u05e8!")
-            tg_send(LOVABLE_TOKEN, chat_id, "\u2705 \u05d1\u05e7\u05e9\u05d4 " + rid + " \u05d0\u05d5\u05e9\u05e8\u05d4!")
-            return jsonify({"ok": True, "handler": "approve", "rid": rid}), 200
-
+            if store: store.update({"status": "approved", "updated_at": now}); save_store()
+            tg_answer(LOVABLE_TOKEN, cb_id, "אושר!")
+            tg_send(LOVABLE_TOKEN, chat_id, "✅ בקשה " + rid + " אושרה!")
         elif action == "reject":
-            if store:
-                store.update({"status": "rejected", "updated_at": now})
-                save_store()
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05e0\u05d3\u05d7\u05d4")
-            tg_send(LOVABLE_TOKEN, chat_id, "\u274c \u05d1\u05e7\u05e9\u05d4 " + rid + " \u05e0\u05d3\u05d7\u05ea\u05d4.")
-            return jsonify({"ok": True, "handler": "reject", "rid": rid}), 200
-
+            if store: store.update({"status": "rejected", "updated_at": now}); save_store()
+            tg_answer(LOVABLE_TOKEN, cb_id, "נדחה")
+            tg_send(LOVABLE_TOKEN, chat_id, "❌ בקשה " + rid + " נדחתה.")
         else:
-            tg_answer(LOVABLE_TOKEN, cb_id, "\u05e4\u05e2\u05d5\u05dc\u05d4 \u05dc\u05d0 \u05de\u05d5\u05db\u05e8\u05ea: " + action)
-            return jsonify({"ok": True, "handler": "unknown", "action": action}), 200
-
+            tg_answer(LOVABLE_TOKEN, cb_id)
+        return jsonify({"ok": True}), 200
     except Exception as e:
         logging.exception("[lovable_cb] exception")
         return jsonify({"ok": True, "error": str(e)}), 200
 
 
 # ══════════════════════════════════════════════════════════════════
-#  LEADS BOT — premium lead management flow
+#  LEADS BOT
 # ══════════════════════════════════════════════════════════════════
 
 def leads_keyboard(rid, phone=""):
@@ -302,167 +369,107 @@ def leads_keyboard(rid, phone=""):
     kb = []
     if phone_clean:
         kb.append([
-            {"text": "\ud83d\udcde \u05d4\u05ea\u05e7\u05e9\u05e8 \u05e2\u05db\u05e9\u05d9\u05d5",
-             "url": "https://wa.me/" + phone_clean + "?text=\u05e9\u05dc\u05d5\u05dd, \u05d0\u05e0\u05d9 \u05de\u05e6\u05d5\u05d5\u05ea \u05e7\u05dc\u05d9\u05e7"},
-            {"text": "\ud83d\udcac WhatsApp",
-             "url": "https://wa.me/" + phone_clean},
+            {"text": "📞 התקשר עכשיו",
+             "url": "https://wa.me/" + phone_clean + "?text=שלום, אני מצוות קליק"},
+            {"text": "💬 WhatsApp", "url": "https://wa.me/" + phone_clean},
         ])
     kb.append([
-        {"text": "\u2705 \u05e4\u05ea\u05d5\u05d7", "callback_data": "lead_open:"  + rid},
-        {"text": "\u274c \u05e1\u05d2\u05d5\u05e8", "callback_data": "lead_close:" + rid},
+        {"text": "✅ פתוח", "callback_data": "lead_open:"    + rid},
+        {"text": "❌ סגור", "callback_data": "lead_close:"   + rid},
     ])
     kb.append([
-        {"text": "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea 2\u05e9",
-         "callback_data": "lead_snooze:" + rid},
-        {"text": "\u2728 \u05e9\u05e4\u05e8 \u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05dc-Lovable",
-         "callback_data": "lead_improve:" + rid},
+        {"text": "⏰ תזכורת 2ש", "callback_data": "lead_snooze:"  + rid},
+        {"text": "✨ שפר פרומפט", "callback_data": "lead_improve:" + rid},
     ])
     return kb
 
-
 def build_lead_prompt(data):
-    """Premium Lovable prompt based on incoming lead."""
     name        = data.get("name")        or NA
     service     = data.get("service")     or NA
     location    = data.get("location")    or NA
     description = data.get("description") or NA
     return "\n".join([
-        "\u2728 <b>\u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05e4\u05e8\u05de\u05d9\u05d5\u05dd \u05dc-Lovable — \u05e9\u05d9\u05e4\u05d5\u05e8 \u05e9\u05d9\u05e8\u05d5\u05ea</b>",
-        "",
-        "<b>1\ufe0f\u20e3 \u05de\u05d8\u05e8\u05d4</b>",
-        "\u05dc\u05e9\u05e4\u05e8 \u05d0\u05ea \u05d3\u05e3 \u05d4\u05e9\u05d9\u05e8\u05d5\u05ea <b>" + service + "</b> \u05db\u05d3\u05d9 \u05dc\u05d4\u05d2\u05d3\u05d9\u05dc \u05d4\u05de\u05e8\u05ea \u05dc\u05d9\u05d3\u05d9\u05dd \u05de\u05d0\u05d6\u05d5\u05e8 " + location + ".",
-        "",
-        "<b>2\ufe0f\u20e3 \u05d4\u05e7\u05e9\u05e8</b>",
-        "\u05dc\u05d9\u05d3 \u05d7\u05d9 \u05e0\u05db\u05e0\u05e1: " + name + " \u05de" + location + " \u05d1\u05d9\u05e7\u05e9 " + service + ".",
-        "\u05d4\u05e6\u05d5\u05e8\u05da: " + description,
-        "",
-        "<b>3\ufe0f\u20e3 \u05de\u05d4 \u05dc\u05e9\u05e4\u05e8</b>",
-        "\u2022 \u05d3\u05e3 \u05e9\u05d9\u05e8\u05d5\u05ea " + service + " \u05e2\u05dd \u05d4\u05e1\u05d1\u05e8 \u05e6\u05dc\u05d5\u05dc\u05d4 \u05d5\u05ea\u05de\u05d5\u05e0\u05d5\u05ea \u05e8\u05dc\u05d5\u05d5\u05e0\u05d8\u05d9\u05d5\u05ea",
-        "\u2022 CTA \u05d1\u05e8\u05d5\u05e8 \u05dc\u05d5\u05d5\u05d0\u05d8\u05e1\u05d0\u05e4/\u05d8\u05dc\u05e4\u05d5\u05df \u05e2\u05dd \u05de\u05e1\u05e4\u05e8 \u05d4\u05d8\u05dc\u05e4\u05d5\u05df",
-        "\u2022 \u05d8\u05d5\u05e4\u05e1 \u05d1\u05d9\u05e6\u05d5\u05e2 \u05de\u05d4\u05d9\u05e8 \u05e2\u05dd \u05e9\u05d3\u05d5\u05ea: \u05e9\u05dd / \u05d8\u05dc\u05e4\u05d5\u05df / \u05de\u05d9\u05e7\u05d5\u05dd / \u05e9\u05d9\u05e8\u05d5\u05ea",
-        "\u2022 \u05e1\u05e7\u05e9\u05ea \u05e6\u05e4\u05e8\u05d3\u05d9\u05ea \u05dc-trust \u05e2\u05dd \u05e8\u05d9\u05e9\u05d5\u05de\u05d5\u05ea / \u05e4\u05e8\u05d5\u05d9\u05e7\u05d8\u05d9\u05dd",
-        "",
-        "<b>4\ufe0f\u20e3 \u05d3\u05e8\u05d9\u05e9\u05d5\u05ea</b>",
-        "\u2022 \u05e9\u05d9\u05e8\u05d5\u05ea: " + service,
-        "\u2022 \u05d0\u05d6\u05d5\u05e8: " + location,
-        "\u2022 \u05d8\u05d5\u05e4\u05e1 \u05d7\u05d5\u05d6\u05e8 \u05dc\u05d9\u05d3 \u05e2\u05dd \u05de\u05e2\u05e7\u05d1 \u05d0\u05d5\u05d8\u05d5\u05de\u05d8\u05d9 \u05dc-WhatsApp",
-        "\u2022 \u05e2\u05d9\u05e6\u05d5\u05d1 \u05e8\u05e1\u05e4\u05d5\u05e0\u05e1\u05d9\u05d1\u05d9 \u05d5\u05de\u05d4\u05d9\u05e8",
-        "",
-        "<b>5\ufe0f\u20e3 \u05de\u05d2\u05d1\u05dc\u05d5\u05ea</b>",
-        "\u2022 \u05dc\u05d0 \u05dc\u05e9\u05e0\u05d5\u05ea \u05d6\u05e8\u05d9\u05de\u05ea \u05e0\u05d9\u05d5\u05d5\u05d8 \u05e7\u05d9\u05d9\u05de\u05ea",
-        "\u2022 \u05dc\u05e9\u05de\u05d5\u05e8 \u05e2\u05dc \u05de\u05d9\u05ea\u05d5\u05d2 \u05e2\u05e7\u05d1\u05d9",
-        "\u2022 \u05dc\u05d0 \u05dc\u05d4\u05d5\u05e1\u05d9\u05e3 \u05e4\u05d5\u05e0\u05e7\u05e6\u05d9\u05d5\u05e0\u05dc\u05d9\u05d5\u05ea \u05dc\u05dc\u05d0 \u05d0\u05d9\u05e9\u05d5\u05e8",
-        "",
-        "<b>6\ufe0f\u20e3 \u05ea\u05d5\u05e6\u05d0\u05d4 \u05e8\u05e6\u05d5\u05d9\u05d4</b>",
-        "\u05d3\u05e3 " + service + " \u05d1" + location + " \u05de\u05de\u05d9\u05e8 \u05dc\u05d9\u05d3\u05d9\u05dd \u05d1\u05d0\u05d5\u05e4\u05df \u05de\u05e7\u05e1\u05d9\u05de\u05dc\u05d9 \u05d5\u05e0\u05d5\u05ea\u05df \u05d1\u05d8\u05d7\u05d5\u05df.",
+        "✨ <b>פרומפט פרמיום ל-Lovable</b>", "",
+        "<b>1️⃣ מטרה</b>",
+        "לשפר את דף <b>" + service + "</b> מאזור " + location + ".", "",
+        "<b>2️⃣ הקשר</b>",
+        "ליד: " + name + " מ" + location + " ביקש " + service + ".",
+        "צורך: " + description, "",
+        "<b>3️⃣ מה לשפר</b>",
+        "• דף שירות " + service + " עם תמונות",
+        "• CTA לוואטסאפ/טלפון",
+        "• טופס ביצוע מהיר", "",
+        "<b>4️⃣ תוצאה רצויה</b>",
+        "דף " + service + " ב" + location + " ממיר לידים.",
     ])
-
 
 @app.route("/webhook/leads", methods=["POST"])
 def leads_webhook():
     try:
-        data = request.get_json(silent=True) or request.form.to_dict()
+        data  = request.get_json(silent=True) or request.form.to_dict()
         if not data:
             return jsonify({"status": "error", "message": "empty"}), 400
-
-        rid  = make_rid(data, "lead")
-        now  = time.time()
+        rid   = make_rid(data, "lead")
+        now   = time.time()
         phone = data.get("phone", "")
-        request_store[rid] = {
-            "type": "lead", "data": data,
-            "lead_prompt": None, "status": "new",
-            "created_at": now, "updated_at": now,
-        }
+        request_store[rid] = {"type": "lead", "data": data,
+                               "lead_prompt": None, "status": "new",
+                               "created_at": now, "updated_at": now}
         save_store()
-
         name     = data.get("name")        or NA
         service  = data.get("service")     or NA
         location = data.get("location")    or NA
         desc     = data.get("description") or NA
-
-        text = (
-            "\ud83d\udd25 <b>\u05dc\u05d9\u05d3 \u05d7\u05d3\u05e9!</b>\n"
-            + "\ud83d\udc64 " + name    + "\n"
-            + "\ud83d\udd27 " + service + "\n"
-            + "\ud83d\udccd " + location + "\n"
-            + ("\ud83d\udcde " + phone + "\n" if phone else "")
-            + "\ud83d\udcdd " + desc    + "\n"
-            + "\ud83d\udd11 ID: " + rid
-        )
+        text = ("🔥 <b>ליד חדש!</b>\n👤 " + name + "\n🔧 " + service +
+                "\n📍 " + location + "\n" +
+                ("📞 " + phone + "\n" if phone else "") +
+                "📝 " + desc + "\n🔑 ID: " + rid)
         res = tg_send(LEADS_TOKEN, CHAT_ID, text, leads_keyboard(rid, phone))
-        logging.info("[leads] rid=%s ok=%s", rid, res.get("ok"))
         return jsonify({"status": "ok", "request_id": rid, "telegram_ok": res.get("ok")}), 200
     except Exception as e:
         logging.exception("[leads] exception")
         return jsonify({"status": "error", "message": str(e)}), 500
 
-
 @app.route("/webhook/callback/leads", methods=["POST"])
 def leads_callback():
     try:
-        upd    = request.get_json(silent=True) or {}
-        cb     = upd.get("callback_query", {})
-        cb_id  = cb.get("id", "")
-        cb_data= (cb.get("data") or "").strip()
-        msg    = cb.get("message", {})
-        msg_id = msg.get("message_id")
-        chat_id= msg.get("chat", {}).get("id", CHAT_ID)
-
-        logging.info("[leads_cb] data=%s", cb_data)
+        upd     = request.get_json(silent=True) or {}
+        cb      = upd.get("callback_query", {})
+        cb_id   = cb.get("id", "")
+        cb_data = (cb.get("data") or "").strip()
+        msg     = cb.get("message", {})
+        chat_id = msg.get("chat", {}).get("id", CHAT_ID)
         if not cb_data or ":" not in cb_data:
-            tg_answer(LEADS_TOKEN, cb_id, "\u05d0\u05d9\u05df \u05e0\u05ea\u05d5\u05df", True)
+            tg_answer(LEADS_TOKEN, cb_id, "אין נתון", True)
             return jsonify({"ok": True}), 200
-
         action, rid = cb_data.split(":", 1)
         store = request_store.get(rid.strip())
         now   = time.time()
-
         if action == "lead_open":
-            if store:
-                store.update({"status": "open", "updated_at": now})
-                save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "\u05dc\u05d9\u05d3 \u05e4\u05ea\u05d5\u05d7")
-            tg_send(LEADS_TOKEN, chat_id,
-                    "\u2705 \u05dc\u05d9\u05d3 " + rid + " \u05e1\u05d5\u05de\u05df \u05db\u05e4\u05ea\u05d5\u05d7!")
-            return jsonify({"ok": True, "handler": "lead_open", "rid": rid}), 200
-
+            if store: store.update({"status": "open", "updated_at": now}); save_store()
+            tg_answer(LEADS_TOKEN, cb_id, "ליד פתוח")
+            tg_send(LEADS_TOKEN, chat_id, "✅ ליד " + rid + " סומן כפתוח!")
         elif action == "lead_close":
-            if store:
-                store.update({"status": "closed", "updated_at": now})
-                save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "\u05dc\u05d9\u05d3 \u05e0\u05e1\u05d2\u05e8")
-            tg_send(LEADS_TOKEN, chat_id,
-                    "\u274c \u05dc\u05d9\u05d3 " + rid + " \u05e0\u05e1\u05d2\u05e8.")
-            return jsonify({"ok": True, "handler": "lead_close", "rid": rid}), 200
-
+            if store: store.update({"status": "closed", "updated_at": now}); save_store()
+            tg_answer(LEADS_TOKEN, cb_id, "ליד נסגר")
+            tg_send(LEADS_TOKEN, chat_id, "❌ ליד " + rid + " נסגר.")
         elif action == "lead_snooze":
-            if store:
-                store.update({"status": "snoozed", "updated_at": now})
-                save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "\u05ea\u05d6\u05db\u05d5\u05e8\u05ea 2\u05e9 \u05e0\u05e7\u05d1\u05e2\u05d4")
-            tg_send(LEADS_TOKEN, chat_id,
-                    "\u23f0 \u05ea\u05d6\u05db\u05d5\u05e8\u05ea \u05dc\u05dc\u05d9\u05d3 " + rid
-                    + " \u05e0\u05e7\u05d1\u05e2\u05d4 \u05dc-2 \u05e9\u05e2\u05d5\u05ea.")
-            return jsonify({"ok": True, "handler": "lead_snooze", "rid": rid}), 200
-
+            if store: store.update({"status": "snoozed", "updated_at": now}); save_store()
+            tg_answer(LEADS_TOKEN, cb_id, "תזכורת 2ש נקבעה")
+            tg_send(LEADS_TOKEN, chat_id, "⏰ תזכורת לליד " + rid + " ל-2 שעות.")
         elif action == "lead_improve":
             if not store:
-                tg_answer(LEADS_TOKEN, cb_id, "RID \u05dc\u05d0 \u05e0\u05de\u05e6\u05d0", True)
-                return jsonify({"ok": True, "handler": "lead_improve", "result": "no_rid"}), 200
+                tg_answer(LEADS_TOKEN, cb_id, "RID לא נמצא", True)
+                return jsonify({"ok": True}), 200
             prompt = build_lead_prompt(store["data"])
             store.update({"lead_prompt": prompt, "status": "prompt_ready", "updated_at": now})
             save_store()
-            tg_answer(LEADS_TOKEN, cb_id, "\u05e4\u05e8\u05d5\u05de\u05e4\u05d8 \u05de\u05d5\u05db\u05df!")
-            res = tg_send(LEADS_TOKEN, chat_id, prompt, [
-                [{"text": "\ud83d\udd17 \u05e4\u05ea\u05d7 Lovable", "url": LOVABLE_URL}],
-            ])
-            return jsonify({"ok": True, "handler": "lead_improve", "rid": rid,
-                            "send_ok": res.get("ok")}), 200
-
+            tg_answer(LEADS_TOKEN, cb_id, "פרומפט מוכן!")
+            tg_send(LEADS_TOKEN, chat_id, prompt,
+                    [[{"text": "🔗 פתח Lovable", "url": LOVABLE_URL}]])
         else:
-            tg_answer(LEADS_TOKEN, cb_id, "\u05e4\u05e2\u05d5\u05dc\u05d4 \u05dc\u05d0 \u05de\u05d5\u05db\u05e8\u05ea: " + action)
-            return jsonify({"ok": True, "handler": "unknown", "action": action}), 200
-
+            tg_answer(LEADS_TOKEN, cb_id)
+        return jsonify({"ok": True}), 200
     except Exception as e:
         logging.exception("[leads_cb] exception")
         return jsonify({"ok": True, "error": str(e)}), 200
@@ -471,22 +478,22 @@ def leads_callback():
 # ── HEALTH ────────────────────────────────────────────────────────
 @app.route("/", methods=["GET"])
 def home():
-    return jsonify({"ok": True, "message": "klik_agent v4.0 running"}), 200
+    return jsonify({"ok": True, "message": "klik_agent v5.0 running"}), 200
 
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
-        "status": "ok", "version": "4.1",
+        "status": "ok", "version": "5.0",
         "lovable_token": bool(LOVABLE_TOKEN),
         "leads_token":   bool(LEADS_TOKEN),
+        "tasks_token":   bool(TASKS_TOKEN),
         "requests":      len(request_store),
     }), 200
-
 
 # ── START ─────────────────────────────────────────────────────────
 load_store()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8080"))
-    print("klik_agent v4.0 — port " + str(port))
+    print("klik_agent v5.0 — port " + str(port))
     app.run(host="0.0.0.0", port=port, debug=False)
